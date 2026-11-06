@@ -14,18 +14,40 @@ body {
   user-select: none;
   -webkit-user-select: none;
 }
-#game {
+/* The game lives in #stage: the window, or on an upright phone the window turned on its side
+   (src/ui/layout.ts sets its size and --sw / --sh, the stage's width and height). */
+#stage {
   position: fixed;
-  inset: 0;
+  left: 0;
+  top: 0;
   width: 100vw;
   height: 100vh;
+  overflow: hidden;
+  transform-origin: 0 0;
+  /* Safe areas (notch, home bar) as the stage sees them. */
+  --sal: env(safe-area-inset-left);
+  --sar: env(safe-area-inset-right);
+  --sat: env(safe-area-inset-top);
+  --sab: env(safe-area-inset-bottom);
+}
+body.rot #stage {
+  --sal: env(safe-area-inset-top);
+  --sar: env(safe-area-inset-bottom);
+  --sat: env(safe-area-inset-right);
+  --sab: env(safe-area-inset-left);
+}
+#game {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   display: block;
 }
 body.playing #game {
   cursor: none;
 }
 #ui {
-  position: fixed;
+  position: absolute;
   inset: 0;
   pointer-events: none;
   color: #fff;
@@ -49,7 +71,7 @@ body.playing #game {
 }
 .logo {
   font-weight: 700;
-  font-size: min(15vw, 150px);
+  font-size: min(calc(var(--sw, 100vw) * 0.15), 150px);
   line-height: 0.9;
   letter-spacing: -0.02em;
   text-align: center;
@@ -92,12 +114,12 @@ body.playing #game {
   box-shadow:
     0 10px 0 rgba(0, 0, 0, 0.25),
     0 30px 60px rgba(0, 0, 0, 0.35);
-  width: min(92vw, 560px);
-  max-height: 90vh;
+  width: min(calc(var(--sw, 100vw) * 0.92), 560px);
+  max-height: calc(var(--sh, 100vh) * 0.9);
   overflow: auto;
 }
 .card.wide {
-  width: min(95vw, 860px);
+  width: min(calc(var(--sw, 100vw) * 0.95), 860px);
 }
 .card h1 {
   margin: 0 0 6px;
@@ -411,7 +433,7 @@ table.stats tr.me {
   top: 78px;
   left: 50%;
   transform: translateX(-50%);
-  width: min(40vw, 420px);
+  width: min(calc(var(--sw, 100vw) * 0.4), 420px);
   height: 12px;
   border-radius: 999px;
   overflow: hidden;
@@ -698,8 +720,8 @@ body.touch button:hover {
   pointer-events: none;
 }
 #touch .stick.rest {
-  left: calc(100px + env(safe-area-inset-left));
-  top: calc(100% - 96px - env(safe-area-inset-bottom));
+  left: calc(100px + var(--sal));
+  top: calc(100% - 96px - var(--sab));
   opacity: 0.45;
 }
 #touch .stick i {
@@ -738,35 +760,35 @@ body.touch button:hover {
 #touch .b-fire {
   width: 96px;
   height: 96px;
-  right: calc(26px + env(safe-area-inset-right));
-  bottom: calc(28px + env(safe-area-inset-bottom));
+  right: calc(26px + var(--sar));
+  bottom: calc(28px + var(--sab));
   font-size: 20px;
   background: rgba(255, 255, 255, 0.18);
 }
 #touch .b-swim {
   width: 68px;
   height: 68px;
-  right: calc(140px + env(safe-area-inset-right));
-  bottom: calc(20px + env(safe-area-inset-bottom));
+  right: calc(140px + var(--sar));
+  bottom: calc(20px + var(--sab));
 }
 #touch .b-jump {
   width: 62px;
   height: 62px;
-  right: calc(44px + env(safe-area-inset-right));
-  bottom: calc(140px + env(safe-area-inset-bottom));
+  right: calc(44px + var(--sar));
+  bottom: calc(140px + var(--sab));
 }
 #touch .b-bomb {
   width: 58px;
   height: 58px;
-  right: calc(128px + env(safe-area-inset-right));
-  bottom: calc(108px + env(safe-area-inset-bottom));
+  right: calc(128px + var(--sar));
+  bottom: calc(108px + var(--sab));
   font-size: 13px;
 }
 #touch .b-special {
   width: 74px;
   height: 74px;
-  right: calc(22px + env(safe-area-inset-right));
-  top: calc(12px + env(safe-area-inset-top));
+  right: calc(22px + var(--sar));
+  top: calc(12px + var(--sat));
   background: conic-gradient(var(--me, var(--a)) calc(var(--k, 0) * 360deg), rgba(15, 18, 32, 0.45) 0);
 }
 #touch .b-special.ready {
@@ -780,7 +802,7 @@ body.touch #hud .spec {
   display: none;
 }
 body.touch #hud .top {
-  top: calc(8px + env(safe-area-inset-top));
+  top: calc(8px + var(--sat));
   gap: 8px;
 }
 body.touch #hud .clock {
@@ -795,17 +817,17 @@ body.touch #hud .head {
   border-width: 2px;
 }
 body.touch #hud .bar {
-  top: calc(56px + env(safe-area-inset-top));
+  top: calc(56px + var(--sat));
   height: 9px;
 }
 body.touch #hud .turf {
-  top: calc(96px + env(safe-area-inset-top));
-  right: calc(24px + env(safe-area-inset-right));
+  top: calc(96px + var(--sat));
+  right: calc(24px + var(--sar));
   font-size: 18px;
 }
 body.touch #hud .map {
-  left: calc(10px + env(safe-area-inset-left));
-  top: calc(10px + env(safe-area-inset-top));
+  left: calc(10px + var(--sal));
+  top: calc(10px + var(--sat));
   bottom: auto;
   width: 60px;
   height: 100px;
@@ -813,13 +835,13 @@ body.touch #hud .map {
   border-radius: 10px;
 }
 body.touch #hud .net {
-  left: calc(78px + env(safe-area-inset-left));
-  top: calc(12px + env(safe-area-inset-top));
+  left: calc(78px + var(--sal));
+  top: calc(12px + var(--sat));
 }
 body.touch #hud .feed {
   right: auto;
-  left: calc(10px + env(safe-area-inset-left));
-  top: calc(120px + env(safe-area-inset-top));
+  left: calc(10px + var(--sal));
+  top: calc(120px + var(--sat));
   align-items: flex-start;
   font-size: 13px;
   gap: 4px;
@@ -842,137 +864,98 @@ body.touch #hud .banner {
 }
 
 /* ---------------------------------------------------------------- short (landscape phone) screens */
-@media (max-height: 540px) {
-  .logo {
-    font-size: min(15vw, 150px, 26vh);
-  }
-  .logo.menu-logo {
-    font-size: 38px;
-  }
-  .press {
-    margin-top: 18px;
-    font-size: 18px;
-  }
-  .card {
-    padding: 14px 18px;
-    border-radius: 18px;
-    max-height: calc(100vh - 16px);
-    max-height: calc(100dvh - 16px);
-    box-sizing: border-box;
-  }
-  .card h1 {
-    font-size: 24px;
-  }
-  .card h2 {
-    margin: 10px 0 6px;
-    font-size: 12px;
-  }
-  .card p {
-    margin: 2px 0 8px;
-    font-size: 14px;
-  }
-  button {
-    font-size: 15px;
-    padding: 9px 16px;
-  }
-  button.go {
-    font-size: 18px;
-    padding: 10px 24px;
-  }
-  button.big {
-    font-size: 18px;
-    padding: 10px 18px;
-    margin: 4px 0;
-  }
-  button.big small {
-    font-size: 12px;
-  }
-  input.txt {
-    font-size: 16px; /* iOS zooms into anything smaller */
-    padding: 6px 10px;
-  }
-  .weapon {
-    padding: 8px;
-    border-radius: 14px;
-  }
-  .weapon b {
-    font-size: 15px;
-  }
-  .weapon span {
-    font-size: 11px;
-  }
-  .team {
-    padding: 8px;
-  }
-  .team h3 {
-    font-size: 15px;
-    margin-bottom: 4px;
-  }
-  .slot {
-    padding: 4px 10px;
-    margin: 4px 0;
-    font-size: 14px;
-  }
-  .code-big {
-    font-size: 28px;
-  }
-  .verdict {
-    font-size: 32px;
-  }
-  .result-bar {
-    height: 38px;
-    font-size: 18px;
-    margin: 8px 0;
-  }
-  table.stats {
-    font-size: 13px;
-  }
-  table.stats td,
-  table.stats th {
-    padding: 3px 6px;
-  }
-  .keys-list {
-    font-size: 13px;
-  }
+/* Short stages (a landscape phone). */
+body.short .logo {
+  font-size: min(calc(var(--sw, 100vw) * 0.15), 150px, calc(var(--sh, 100vh) * 0.26));
+}
+body.short .logo.menu-logo {
+  font-size: 38px;
+}
+body.short .press {
+  margin-top: 18px;
+  font-size: 18px;
+}
+body.short .card {
+  padding: 14px 18px;
+  border-radius: 18px;
+  max-height: calc(var(--sh, 100vh) - 16px);
+  box-sizing: border-box;
+}
+body.short .card h1 {
+  font-size: 24px;
+}
+body.short .card h2 {
+  margin: 10px 0 6px;
+  font-size: 12px;
+}
+body.short .card p {
+  margin: 2px 0 8px;
+  font-size: 14px;
+}
+body.short button {
+  font-size: 15px;
+  padding: 9px 16px;
+}
+body.short button.go {
+  font-size: 18px;
+  padding: 10px 24px;
+}
+body.short button.big {
+  font-size: 18px;
+  padding: 10px 18px;
+  margin: 4px 0;
+}
+body.short button.big small {
+  font-size: 12px;
+}
+body.short input.txt {
+  font-size: 16px; /* iOS zooms into anything smaller */
+  padding: 6px 10px;
+}
+body.short .weapon {
+  padding: 8px;
+  border-radius: 14px;
+}
+body.short .weapon b {
+  font-size: 15px;
+}
+body.short .weapon span {
+  font-size: 11px;
+}
+body.short .team {
+  padding: 8px;
+}
+body.short .team h3 {
+  font-size: 15px;
+  margin-bottom: 4px;
+}
+body.short .slot {
+  padding: 4px 10px;
+  margin: 4px 0;
+  font-size: 14px;
+}
+body.short .code-big {
+  font-size: 28px;
+}
+body.short .verdict {
+  font-size: 32px;
+}
+body.short .result-bar {
+  height: 38px;
+  font-size: 18px;
+  margin: 8px 0;
+}
+body.short table.stats {
+  font-size: 13px;
+}
+body.short table.stats td,
+body.short table.stats th {
+  padding: 3px 6px;
+}
+body.short .keys-list {
+  font-size: 13px;
 }
 
-/* ---------------------------------------------------------------- hold it sideways */
-#rotate {
-  display: none;
-}
-@media (orientation: portrait) {
-  body.touch #rotate {
-    display: flex;
-    position: fixed;
-    inset: 0;
-    z-index: 50;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 18px;
-    background: #1b1d2a;
-    color: #fff;
-    font: 600 20px "Fredoka", system-ui, sans-serif;
-    text-align: center;
-  }
-  body.touch #rotate i {
-    width: 46px;
-    height: 80px;
-    border: 4px solid #fff;
-    border-radius: 10px;
-    animation: turn 1.8s ease-in-out infinite;
-  }
-}
-@keyframes turn {
-  0%,
-  25% {
-    transform: rotate(0);
-  }
-  60%,
-  100% {
-    transform: rotate(-90deg);
-  }
-}
 
 /* The main buttons of a long card stay in reach: pinned to the card's bottom edge. */
 .card .actions {
@@ -984,12 +967,11 @@ body.touch #hud .banner {
   border-top: 2px solid #ece5d6;
   z-index: 1;
 }
-@media (max-height: 540px) {
-  .card .actions {
-    bottom: -14px;
-    margin: 10px -18px -14px;
-    padding: 8px 18px 10px;
-  }
+/* Short stages (a landscape phone). */
+body.short .card .actions {
+  bottom: -14px;
+  margin: 10px -18px -14px;
+  padding: 8px 18px 10px;
 }
 .logo.menu-logo {
   margin-bottom: 10px;
