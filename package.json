@@ -1,0 +1,24 @@
+{
+  "name": "ink-rush",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A 4v4 ink turf-war shooter in the browser: paint the plaza, swim in your ink, splat the other team. Online with friends or against bots.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --port 5420 --strictPort",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "peerjs": "1.5.5",
+    "three": "0.186.0"
+  },
+  "devDependencies": {
+    "@types/three": "0.186.0",
+    "playwright": "1.62.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.1"
+  }
+}
