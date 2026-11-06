@@ -11,6 +11,7 @@
  * Everything is pointer events with one handler per finger (pointerId), so any mix of thumbs
  * works: walk + aim + fire at once.
  */
+import { layout, toStage } from "./layout";
 
 export type TouchButton = "fire" | "swim" | "jump" | "bomb" | "special";
 
@@ -117,44 +118,46 @@ export class TouchControls {
     } catch {
       /* a synthetic pointer */
     }
+    const [sx, sy] = toStage(e.clientX, e.clientY);
     const el = (e.target as HTMLElement).closest<HTMLElement>("[data-b]");
     if (el) {
       const b = el.dataset.b as TouchButton;
       el.classList.add("on");
       if (b === "swim") {
         this.swim = !this.swim;
-        this.fingers.set(e.pointerId, { kind: "button", button: b, x: e.clientX, y: e.clientY });
+        this.fingers.set(e.pointerId, { kind: "button", button: b, x: sx, y: sy });
         return;
       }
       if (b === "fire" || b === "bomb" || b === "special") this.swim = false;
       this[b] = true;
       // The fire button aims too: drag the same thumb.
-      this.fingers.set(e.pointerId, { kind: b === "fire" ? "look" : "button", button: b, x: e.clientX, y: e.clientY });
+      this.fingers.set(e.pointerId, { kind: b === "fire" ? "look" : "button", button: b, x: sx, y: sy });
       return;
     }
-    if (e.clientX < window.innerWidth * 0.42) {
+    if (sx < layout.w * 0.42) {
       // A new stick where the thumb landed (one stick at a time).
       for (const [id, f] of this.fingers) if (f.kind === "stick") this.fingers.delete(id);
-      this.stickX = e.clientX;
-      this.stickY = e.clientY;
+      this.stickX = sx;
+      this.stickY = sy;
       this.stick.classList.remove("rest");
-      this.stick.style.left = `${e.clientX}px`;
-      this.stick.style.top = `${e.clientY}px`;
+      this.stick.style.left = `${sx}px`;
+      this.stick.style.top = `${sy}px`;
       this.knob.style.transform = "";
       this.mx = this.my = 0;
-      this.fingers.set(e.pointerId, { kind: "stick", x: e.clientX, y: e.clientY });
+      this.fingers.set(e.pointerId, { kind: "stick", x: sx, y: sy });
       return;
     }
-    this.fingers.set(e.pointerId, { kind: "look", x: e.clientX, y: e.clientY });
+    this.fingers.set(e.pointerId, { kind: "look", x: sx, y: sy });
   }
 
   private move(e: PointerEvent): void {
     const f = this.fingers.get(e.pointerId);
     if (!f) return;
     e.preventDefault();
+    const [sx, sy] = toStage(e.clientX, e.clientY);
     if (f.kind === "stick") {
-      let dx = e.clientX - this.stickX;
-      let dy = e.clientY - this.stickY;
+      let dx = sx - this.stickX;
+      let dy = sy - this.stickY;
       const d = Math.hypot(dx, dy);
       if (d > STICK_R) {
         // Past the rim: the stick follows the thumb, so the thumb never runs out of stick.
@@ -163,8 +166,8 @@ export class TouchControls {
         this.stickY += dy * k;
         this.stick.style.left = `${this.stickX}px`;
         this.stick.style.top = `${this.stickY}px`;
-        dx = e.clientX - this.stickX;
-        dy = e.clientY - this.stickY;
+        dx = sx - this.stickX;
+        dy = sy - this.stickY;
       }
       this.knob.style.transform = `translate(${dx}px, ${dy}px)`;
       const m = Math.hypot(dx, dy) / STICK_R;
@@ -176,11 +179,11 @@ export class TouchControls {
         this.my = (-dy / STICK_R) * s;
       }
     } else if (f.kind === "look") {
-      this.lookDx += e.clientX - f.x;
-      this.lookDy += e.clientY - f.y;
+      this.lookDx += sx - f.x;
+      this.lookDy += sy - f.y;
     }
-    f.x = e.clientX;
-    f.y = e.clientY;
+    f.x = sx;
+    f.y = sy;
   }
 
   private up(e: PointerEvent): void {

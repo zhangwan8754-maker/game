@@ -13,12 +13,15 @@ import { aimDir, type GameEvent, Player, World } from "./game/world";
 import { BROKER_PARAM, ClientSession, HostSession, type Msg, randomCode } from "./net/session";
 import { Actors } from "./render/actors";
 import { escapeHtml, Hud } from "./ui/hud";
+import { applyLayout, layout } from "./ui/layout";
 import { goFullscreen, isTouchDevice, TouchControls } from "./ui/touch";
 import { Arena, BACKDROP_MAP, MAPS } from "./world/map";
 import { ArenaView } from "./world/scene";
 
 const touchMode = isTouchDevice();
 document.body.classList.toggle("touch", touchMode);
+const stage = document.getElementById("stage") as HTMLElement;
+applyLayout(stage, touchMode);
 
 // ------------------------------------------------------------------ settings
 
@@ -80,11 +83,15 @@ renderer.toneMappingExposure = 1.05;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(68, 16 / 9, 0.1, 900);
 function resize(): void {
-  renderer.setSize(window.innerWidth, window.innerHeight, false);
-  camera.aspect = window.innerWidth / window.innerHeight;
+  applyLayout(stage, touchMode);
+  renderer.setSize(layout.w, layout.h, false);
+  camera.aspect = layout.w / layout.h;
   camera.updateProjectionMatrix();
 }
 window.addEventListener("resize", resize);
+window.addEventListener("orientationchange", () => setTimeout(resize, 120));
+// Typing held the layout still (see applyLayout); catch up once the keyboard is gone.
+document.addEventListener("focusout", () => setTimeout(resize, 120));
 
 /** Pixel ratio and shadows for the chosen quality; safe to call any time. */
 function applyQuality(): void {
