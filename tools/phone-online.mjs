@@ -16,7 +16,9 @@ const check = (name, v, info = "") => {
 };
 
 const browser = await launchBrowser();
-const H = await phone(browser, URL);
+// Everyone brings one of the newer weapons: pellets, spin-up, bursts and brushing all go over the wire.
+const WEAPONS = ["cannon", "scatter", "gatling", "brush"];
+const H = await phone(browser, URL, { weapon: WEAPONS[0] });
 await H.touch.tap(PHONE.width / 2, PHONE.height / 2);
 await tapOn(H, "#online");
 await tapOn(H, "#create");
@@ -25,7 +27,7 @@ const link = await H.page.textContent("#link");
 check("host opened a room", /room=[A-Z0-9]{5}/.test(link) && link.includes("broker="), link);
 
 const G = [];
-for (let k = 0; k < 3; k++) G.push(await phone(browser, link));
+for (let k = 0; k < 3; k++) G.push(await phone(browser, link, { weapon: WEAPONS[k + 1] }));
 await H.page.waitForFunction(() => document.querySelectorAll(".slot:not(.bot)").length === 4, null, { timeout: 60000 });
 check("three friends joined by link: 4 humans in the lobby", true);
 await H.page.screenshot({ path: "shots/online-lobby.png" });
@@ -42,6 +44,18 @@ const all = [H, ...G];
 await Promise.all(all.map((x) => x.page.waitForFunction(() => window.__ink.world?.state === "play", null, { timeout: 40000 })));
 const teams = await H.page.evaluate(() => [...window.__ink.world.players.values()].map((p) => `${p.team}${p.bot ? "b" : "h"}`).sort().join(","));
 check("match: 2 humans a side, no bots", teams === "0h,0h,1h,1h", teams);
+const held = await H.page.evaluate(() => [...window.__ink.world.players.values()].map((p) => p.weapon).sort().join(","));
+check("each phone holds its weapon", held === [...WEAPONS].sort().join(","), held);
+await H.page.evaluate(() => {
+  const w = window.__ink.world;
+  window.__seen = new Set();
+  const emit = w.emit.bind(w);
+  w.emit = (e) => {
+    if (e.k === "shot" || e.k === "stripe") window.__seen.add(w.players.get(e.id ?? e.by)?.weapon);
+    if (e.k === "boom") window.__seen.add("boom");
+    emit(e);
+  };
+});
 
 // Everyone walks and fires (through the on-screen controls' state).
 await Promise.all(
@@ -71,6 +85,8 @@ await Promise.all(all.map((x) => x.page.evaluate(() => (window.__ink.touch.fire 
 await H.page.waitForTimeout(3000);
 const s = await Promise.all(all.map(snap));
 console.log(s.map((v, k) => `  phone ${k}: ${JSON.stringify(v)}`).join("\n"));
+const seen = await H.page.evaluate(() => [...window.__seen].sort().join(","));
+check("the host saw every weapon in action (and cannon bursts)", ["boom", ...WEAPONS].every((w) => seen.includes(w)), seen);
 const painted = s[0].cells[0] + s[0].cells[1];
 check("players painted the stage", painted > 200, `${painted} cells`);
 check("all four phones see the same turf", s.every((v) => v.cells.join() === s[0].cells.join()));

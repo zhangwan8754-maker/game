@@ -15,9 +15,10 @@ export async function launchBrowser() {
 }
 
 /** A phone page: the browser in landscape, or stuck upright (`upright`, e.g. rotation lock). */
-export async function phone(browser, url, { scale = 1, upright = false } = {}) {
+export async function phone(browser, url, { scale = 1, upright = false, weapon = null } = {}) {
   const viewport = upright ? { width: PHONE.height, height: PHONE.width } : PHONE;
   const context = await browser.newContext({ viewport, isMobile: true, hasTouch: true, deviceScaleFactor: scale });
+  if (weapon) await context.addInitScript((w) => localStorage.setItem("inkrush.weapon", w), weapon);
   const page = await context.newPage();
   const errors = [];
   page.on("console", (m) => m.type() === "error" && errors.push("console: " + m.text()));

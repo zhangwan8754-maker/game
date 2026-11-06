@@ -109,6 +109,9 @@ const KIND_COLOR: Record<string, number> = {
   base: 0x8fa9b8,
   tower: 0xf0e8da,
   wall: 0x6f8290,
+  step: 0xc9b896,
+  pillar: 0xa59a8a,
+  grate: 0x4d5663,
 };
 
 export class ArenaView {
@@ -149,7 +152,11 @@ export class ArenaView {
     }
     for (const [k, geos] of byKind) {
       const g = mergeGeometries(geos, false);
-      const mat = paintable(new THREE.MeshStandardMaterial({ color: KIND_COLOR[k] ?? 0xcccccc, roughness: k === "crate" ? 0.7 : 0.6 }), this.uniforms, false);
+      const mat = paintable(
+        new THREE.MeshStandardMaterial({ color: KIND_COLOR[k] ?? 0xcccccc, roughness: k === "crate" ? 0.7 : k === "grate" ? 0.35 : 0.6, metalness: k === "grate" ? 0.7 : 0 }),
+        this.uniforms,
+        false,
+      );
       const m = new THREE.Mesh(g, mat);
       m.castShadow = true;
       m.receiveShadow = true;

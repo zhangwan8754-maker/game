@@ -149,7 +149,7 @@ export class BotBrain {
     }
     this.thinkT -= dt;
     if (this.thinkT <= 0) {
-      this.thinkT = 0.35 + this.R() * 0.2;
+      this.thinkT = S.think + this.R() * S.think * 0.55;
       this.think(world, nav);
     }
     const w = p.w;
@@ -179,13 +179,15 @@ export class BotBrain {
       const az = dz + t.vel.z * lead;
       this.strafeT -= dt;
       if (this.strafeT <= 0) {
-        this.strafeT = 0.6 + this.R() * 1.1;
+        this.strafeT = S.strafe + this.R() * S.strafe * 1.8;
         this.strafe = this.R() < 0.5 ? -1 : 1;
         this.aimErrYaw = (this.R() - 0.5) * 2 * S.aim;
         this.aimErrPitch = (this.R() - 0.5) * S.aim;
       }
       yaw = Math.atan2(ax, az) + this.aimErrYaw;
-      pitch = Math.atan2(t.pos.y + 0.7 - (p.pos.y + 1.15), d) + this.aimErrPitch + (w.kind === "auto" ? Math.min(0.12, d * 0.006) : 0);
+      // Blast weapons aim at the feet (the burst catches a near miss); the rest at the body.
+      const aimY = w.blast ? 0.25 : 0.7;
+      pitch = Math.atan2(t.pos.y + aimY - (p.pos.y + 1.15), d) + this.aimErrPitch + (w.kind === "auto" ? Math.min(0.12, d * 0.006 * (30 / Math.max(w.speed, 1))) : 0);
       const want = w.kind === "roller" ? 0.8 : w.kind === "charge" ? w.range * 0.6 : w.range * 0.7;
       const fx = dx / (d || 1);
       const fz = dz / (d || 1);
@@ -193,6 +195,8 @@ export class BotBrain {
       mx = fx * push + -fz * this.strafe * (w.kind === "charge" ? 0.3 : 0.8);
       mz = fz * push + fx * this.strafe * (w.kind === "charge" ? 0.3 : 0.8);
       this.seenT += dt;
+      // Hop now and then to be harder to hit.
+      if (S.hop > 0 && p.onGround && this.R() < S.hop * dt) c.jump = true;
       if (this.seenT > S.react) {
         if (w.kind === "charge") {
           // Charge, then let go once aimed and full (or the target is close).
@@ -223,7 +227,7 @@ export class BotBrain {
     // Hold the special a while at most.
     if (p.special >= w.special) {
       this.fullFor += dt;
-      if (this.fullFor > 9) c.special = true;
+      if (this.fullFor > S.holdSpecial) c.special = true;
     } else this.fullFor = 0;
     // Stuck: hop.
     const moved = Math.hypot(p.pos.x - this.lastX, p.pos.z - this.lastZ);
@@ -249,18 +253,20 @@ export class BotBrain {
   private think(world: World, nav: NavGrid): void {
     const p = this.p;
     const a = world.arena;
-    // Fight whoever is closest and in sight.
+    const S = BOT_SKILL[this.skill];
+    // Fight whoever is closest and in sight (a sharp bot: the weakest one in reach).
     let best: Player | null = null;
     let bd = Infinity;
     for (const q of world.players.values()) {
       if (q.team === p.team || q.dead) continue;
       const d = p.pos.distanceTo(q.pos);
       const range = p.w.range + 5;
-      if (d > range || (q.submerged && d > 5)) continue;
+      if (d > range || (q.submerged && d > S.sense)) continue;
       const f = a.raycast(p.pos.x, p.pos.y + 1.2, p.pos.z, q.pos.x, q.pos.y + 0.9, q.pos.z);
       if (f < 0.98) continue;
-      if (d < bd) {
-        bd = d;
+      const score = S.focus ? d * 0.5 + q.hp * 0.12 : d;
+      if (score < bd) {
+        bd = score;
         best = q;
       }
     }
@@ -272,7 +278,7 @@ export class BotBrain {
       return;
     }
     this.target = null;
-    if (p.ink < 18 || (this.mode === "refill" && p.ink < 85)) {
+    if (p.ink < S.refill || (this.mode === "refill" && p.ink < 85)) {
       this.mode = "refill";
       if (world.paint.ownerAt(p.pos.x, p.pos.z) !== p.team + 1) this.goTo(this.find(world, 14, (o) => o === p.team + 1), nav);
       else this.path = [];
@@ -296,6 +302,9 @@ export class BotBrain {
       const x = p.pos.x + Math.cos(ang) * r;
       const z = p.pos.z + Math.sin(ang) * r;
       if (!a.inside(x, z)) continue;
+      // Ink-proof floor (grates) is no target: it can never be turned.
+      const [ci, cj] = a.cellOf(x, z);
+      if (!a.paintable[cj * a.w + ci]) continue;
       const o = world.paint.ownerAt(x, z);
       if (!want(o)) continue;
       const s = -r * 0.3 + (o !== 0 ? 3 : 0) + z * forward * 0.08 + this.R() * 2;

@@ -16,7 +16,7 @@ export interface Solid {
   ramp?: { axis: "x" | "z"; dir: 1 | -1; lo: number };
   /** Paint-proof (a spawn pad's glass, the tower's roof trim): walkable, never inked. */
   noPaint?: boolean;
-  kind?: "block" | "crate" | "base" | "tower" | "wall";
+  kind?: "block" | "crate" | "base" | "tower" | "wall" | "step" | "pillar" | "grate";
 }
 
 export interface MapDef {
@@ -187,8 +187,70 @@ const COURT: MapDef = {
   ],
 };
 
-/** COURT first: it's the default for 2 v 2. The two bigger stages stay for a roomier game. */
-export const MAPS: MapDef[] = [COURT, PLAZA, YARD];
+/**
+ * Terrace Ruins: the most varied ground. A stepped terrace hill (0.5 m rings you walk up like
+ * stairs) to a 2 m lookout, a long 2.2 m ridge walk on the other flank, a central plateau with
+ * ramps on all four sides and a crate on top, stone pillars (tall cover, ink-proof), and metal
+ * grates no ink sticks to. Sized between the court and the canal yard.
+ */
+const pillar = (x0: number, x1: number, z0: number, z1: number): Solid => ({ ...box(x0, x1, z0, z1, 3.6, "pillar"), noPaint: true });
+const grate = (x0: number, x1: number, z0: number, z1: number): Solid => ({ ...box(x0, x1, z0, z1, 0.15, "grate"), noPaint: true });
+const TERRACE: MapDef = {
+  name: "梯田遗迹",
+  blurb: "地形最丰富：一层层梯田台阶通到瞭望台、侧边高走道、中央四面坡高台、石柱，还有涂不上墨的铁格栅。",
+  halfX: 18,
+  halfZ: 30,
+  res: 4,
+  time: "dusk",
+  solids: [
+    ...sym([
+      // Team 0's deck (z < 0) and its ramps.
+      box(-6, 6, -30, -25, 1.0, "base"),
+      ramp(-2.5, 2.5, -25, -21.5, 0, 1.0, "z", -1),
+      ramp(6, 9, -29, -26, 0, 1.0, "x", -1),
+      // West: the terrace hill, four 0.5 m rings up to a 2 m lookout.
+      box(-17, -7, -21, -9, 0.5, "step"),
+      box(-16, -8, -20, -10, 1.0, "step"),
+      box(-15, -9, -19, -11, 1.5, "step"),
+      box(-14, -10, -18, -12, 2.0),
+      // East: the ridge walk, 2.2 m up, its ramp rising from the base side.
+      box(10, 15, -16, -5, 2.2),
+      ramp(10, 15, -21, -16, 0, 2.2, "z", 1),
+      // Stone pillars.
+      pillar(-4.5, -3.5, -15, -14),
+      pillar(5, 6, -20, -19),
+      pillar(-6, -5, -6, -5),
+      // Grates across the middle lane and by the east wall.
+      grate(-2.5, 2.5, -13, -11),
+      grate(15, 18, -24, -20),
+      // Crates and low walls.
+      box(-1, 2, -19, -17, 2.0, "crate"),
+      box(14, 17, -29, -26, 1.3, "crate"),
+      box(6, 9, -9, -8.4, 1.0, "wall"),
+      box(-11, -7, -5, -4.4, 1.0, "wall"),
+    ]),
+    // The central plateau: ramps on all four sides (each pair mirrors onto itself), a crate on top.
+    box(-4, 4, -4, 4, 1.6, "tower"),
+    ramp(-2, 2, 4, 7, 0, 1.6, "z", -1),
+    ramp(-2, 2, -7, -4, 0, 1.6, "z", 1),
+    ramp(4, 7, -2, 2, 0, 1.6, "x", -1),
+    ramp(-7, -4, -2, 2, 0, 1.6, "x", 1),
+    box(-1, 1, -0.6, 0.6, 2.7, "crate"),
+  ],
+  spawns: [
+    [
+      [-2, -27.5],
+      [2, -27.5],
+    ],
+    [
+      [2, 27.5],
+      [-2, 27.5],
+    ],
+  ],
+};
+
+/** COURT first: it's the default for 2 v 2. Then the varied terrace, then the two bigger stages. */
+export const MAPS: MapDef[] = [COURT, TERRACE, PLAZA, YARD];
 /** The menus' backdrop stage. */
 export const BACKDROP_MAP = PLAZA;
 
