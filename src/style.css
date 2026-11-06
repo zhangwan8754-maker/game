@@ -1,0 +1,999 @@
+:root {
+  --a: #ff7a1a;
+  --b: #3a5bff;
+  --ink: #1b1d2a;
+  --paper: #fffaf0;
+  font-family: "Fredoka", "Baloo 2", system-ui, sans-serif;
+}
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #0f1220;
+  user-select: none;
+  -webkit-user-select: none;
+}
+#game {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  display: block;
+}
+body.playing #game {
+  cursor: none;
+}
+#ui {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  color: #fff;
+}
+.off {
+  display: none !important;
+}
+
+/* ---------------------------------------------------------------- screens */
+.screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  background: radial-gradient(ellipse at 30% 20%, rgba(255, 255, 255, 0.08), transparent 60%), rgba(15, 18, 32, 0.35);
+}
+.screen.clear {
+  background: none;
+}
+.logo {
+  font-weight: 700;
+  font-size: min(15vw, 150px);
+  line-height: 0.9;
+  letter-spacing: -0.02em;
+  text-align: center;
+  text-shadow:
+    0 6px 0 var(--ink),
+    0 14px 40px rgba(0, 0, 0, 0.45);
+}
+.logo span:nth-child(1) {
+  color: var(--a);
+}
+.logo span:nth-child(2) {
+  color: var(--b);
+}
+.logo small {
+  display: block;
+  font-size: 0.2em;
+  letter-spacing: 0.4em;
+  color: #fff;
+  text-shadow: 0 3px 0 var(--ink);
+  margin-top: 10px;
+}
+.press {
+  margin-top: 40px;
+  text-align: center;
+  font-size: 22px;
+  letter-spacing: 0.15em;
+  animation: pulse 1.6s ease-in-out infinite;
+  text-shadow: 0 2px 0 var(--ink);
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+.card {
+  background: var(--paper);
+  color: var(--ink);
+  border-radius: 26px;
+  padding: 26px 30px;
+  box-shadow:
+    0 10px 0 rgba(0, 0, 0, 0.25),
+    0 30px 60px rgba(0, 0, 0, 0.35);
+  width: min(92vw, 560px);
+  max-height: 90vh;
+  overflow: auto;
+}
+.card.wide {
+  width: min(95vw, 860px);
+}
+.card h1 {
+  margin: 0 0 6px;
+  font-size: 34px;
+}
+.card h2 {
+  margin: 18px 0 8px;
+  font-size: 15px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #6b6f86;
+}
+.card p {
+  margin: 4px 0 12px;
+  color: #444a63;
+  line-height: 1.45;
+}
+.row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+button {
+  font: 600 18px "Fredoka", system-ui, sans-serif;
+  border: 0;
+  border-radius: 999px;
+  padding: 12px 22px;
+  background: var(--ink);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.3);
+  transition: transform 0.08s;
+}
+button:hover {
+  transform: translateY(-2px);
+}
+button:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
+}
+button.go {
+  background: var(--a);
+  font-size: 22px;
+  padding: 14px 34px;
+}
+button.alt {
+  background: #e4dfd3;
+  color: var(--ink);
+}
+button.sel {
+  background: var(--b);
+  color: #fff;
+}
+button.big {
+  width: 100%;
+  text-align: left;
+  font-size: 24px;
+  padding: 18px 26px;
+  margin: 6px 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+button.big small {
+  font-size: 14px;
+  opacity: 0.75;
+  font-weight: 500;
+}
+input.txt {
+  font: 600 20px "Fredoka", system-ui, sans-serif;
+  border: 3px solid var(--ink);
+  border-radius: 14px;
+  padding: 8px 12px;
+  width: 11em;
+  background: #fff;
+  color: var(--ink);
+}
+input.code {
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+  width: 7em;
+}
+.weapons {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.weapon {
+  border-radius: 18px;
+  padding: 12px;
+  background: #efe9dc;
+  cursor: pointer;
+  border: 3px solid transparent;
+}
+.weapon.sel {
+  border-color: var(--a);
+  background: #fff3e6;
+}
+.weapon b {
+  display: block;
+  font-size: 18px;
+}
+.weapon span {
+  font-size: 13px;
+  color: #555b73;
+}
+.teams {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.team {
+  border-radius: 18px;
+  padding: 12px;
+  color: #fff;
+}
+.team.t0 {
+  background: var(--a);
+}
+.team.t1 {
+  background: var(--b);
+}
+.team h3 {
+  margin: 0 0 8px;
+  font-size: 18px;
+  letter-spacing: 0.1em;
+}
+.slot {
+  background: rgba(0, 0, 0, 0.22);
+  border-radius: 12px;
+  padding: 7px 12px;
+  margin: 5px 0;
+  display: flex;
+  justify-content: space-between;
+  font-weight: 600;
+}
+.slot.bot {
+  opacity: 0.65;
+  font-style: italic;
+}
+.slot.me {
+  outline: 3px solid #fff;
+}
+.code-big {
+  font-size: 40px;
+  letter-spacing: 0.3em;
+  font-weight: 700;
+  color: var(--a);
+}
+.link {
+  font: 13px ui-monospace, monospace;
+  background: #efe9dc;
+  border-radius: 10px;
+  padding: 8px 10px;
+  word-break: break-all;
+  cursor: pointer;
+}
+.status {
+  color: #7b3dff;
+  font-weight: 600;
+  min-height: 1.4em;
+}
+.small {
+  font-size: 13px;
+  color: #6b6f86;
+}
+.keys-list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 16px;
+  font-size: 15px;
+}
+.keys-list b {
+  background: var(--ink);
+  color: #fff;
+  border-radius: 8px;
+  padding: 1px 8px;
+  justify-self: start;
+}
+
+/* ---------------------------------------------------------------- results */
+.result-bar {
+  display: flex;
+  height: 54px;
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 14px 0;
+  font-weight: 700;
+  font-size: 24px;
+  box-shadow: inset 0 -5px 0 rgba(0, 0, 0, 0.18);
+}
+.result-bar div {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  transition: flex-basis 1.6s cubic-bezier(0.2, 0.9, 0.3, 1);
+  flex-basis: 50%;
+}
+.result-bar .a {
+  background: var(--a);
+}
+.result-bar .b {
+  background: var(--b);
+}
+.verdict {
+  font-size: 44px;
+  font-weight: 700;
+  text-align: center;
+}
+table.stats {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 15px;
+}
+table.stats td,
+table.stats th {
+  padding: 5px 8px;
+  text-align: left;
+}
+table.stats tr.t0 td:first-child {
+  border-left: 6px solid var(--a);
+}
+table.stats tr.t1 td:first-child {
+  border-left: 6px solid var(--b);
+}
+table.stats tr.me {
+  background: #fff1d6;
+}
+
+/* ---------------------------------------------------------------- HUD */
+#hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  font-weight: 700;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
+}
+#hud .top {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+#hud .clock {
+  background: var(--ink);
+  border-radius: 999px;
+  padding: 6px 22px;
+  font-size: 34px;
+  min-width: 96px;
+  text-align: center;
+  border: 4px solid #fff;
+}
+#hud .clock.hurry {
+  color: #ff5d5d;
+  animation: pulse 0.8s infinite;
+}
+#hud .heads {
+  display: flex;
+  gap: 6px;
+}
+#hud .head {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 3px solid #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.25);
+}
+#hud .head.t0 {
+  background: var(--a);
+}
+#hud .head.t1 {
+  background: var(--b);
+}
+#hud .head.me {
+  outline: 3px solid var(--ink);
+}
+#hud .head.dead {
+  filter: grayscale(1) brightness(0.55);
+  transform: scale(0.85);
+}
+#hud .head.sp {
+  box-shadow:
+    0 0 0 3px #fff,
+    0 0 18px 4px #fff;
+}
+#hud .head i {
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border-radius: 4px;
+}
+#hud .head i.w-roller {
+  border-radius: 8px 8px 2px 2px;
+  width: 20px;
+  height: 10px;
+}
+#hud .head i.w-longshot {
+  width: 22px;
+  height: 6px;
+}
+#hud .bar {
+  position: absolute;
+  top: 78px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(40vw, 420px);
+  height: 12px;
+  border-radius: 999px;
+  overflow: hidden;
+  display: flex;
+  background: rgba(0, 0, 0, 0.3);
+  border: 2px solid #fff;
+}
+#hud .bar .a {
+  background: var(--a);
+  transition: width 0.4s;
+}
+#hud .bar .b {
+  background: var(--b);
+  transition: width 0.4s;
+  margin-left: auto;
+}
+#hud .cross {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+}
+#hud .cross i {
+  position: absolute;
+  background: #fff;
+  box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.55);
+  border-radius: 2px;
+}
+#hud .cross i:nth-child(1) {
+  left: -2px;
+  top: -18px;
+  width: 4px;
+  height: 10px;
+}
+#hud .cross i:nth-child(2) {
+  left: -2px;
+  top: 8px;
+  width: 4px;
+  height: 10px;
+}
+#hud .cross i:nth-child(3) {
+  left: -18px;
+  top: -2px;
+  width: 10px;
+  height: 4px;
+}
+#hud .cross i:nth-child(4) {
+  left: 8px;
+  top: -2px;
+  width: 10px;
+  height: 4px;
+}
+#hud .cross b {
+  position: absolute;
+  left: -22px;
+  top: -22px;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 3px solid transparent;
+}
+#hud .cross.charge b {
+  border-color: rgba(255, 255, 255, calc(0.3 + var(--c) * 0.7));
+  transform: scale(calc(1.6 - var(--c) * 0.6));
+}
+#hud .cross.hit i {
+  background: #ff4d4d;
+}
+#hud .ink {
+  position: absolute;
+  left: calc(50% + 60px);
+  top: calc(50% - 45px);
+  width: 16px;
+  height: 90px;
+  border-radius: 10px;
+  border: 3px solid #fff;
+  background: rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  opacity: 0.85;
+}
+#hud .ink .fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--me, var(--a));
+  transition: height 0.1s;
+}
+#hud .ink span {
+  position: absolute;
+  bottom: -22px;
+  font-size: 11px;
+}
+#hud .ink.low {
+  border-color: #ff4d4d;
+  animation: pulse 0.6s infinite;
+}
+#hud .spec {
+  position: absolute;
+  right: 26px;
+  top: 20px;
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  background: conic-gradient(var(--me, var(--a)) calc(var(--k, 0) * 360deg), rgba(0, 0, 0, 0.4) 0);
+  border: 4px solid #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+#hud .spec.full {
+  animation: pulse 0.7s infinite;
+  box-shadow: 0 0 30px 6px var(--me, var(--a));
+}
+#hud .spec em {
+  position: absolute;
+  bottom: -10px;
+  background: var(--ink);
+  border-radius: 8px;
+  padding: 1px 8px;
+  font-style: normal;
+  font-size: 14px;
+}
+#hud .turf {
+  position: absolute;
+  right: 30px;
+  top: 130px;
+  font-size: 26px;
+  background: var(--ink);
+  border-radius: 999px;
+  padding: 2px 16px;
+}
+#hud .turf small {
+  font-size: 15px;
+  margin-left: 2px;
+}
+#hud .feed {
+  position: absolute;
+  right: 22px;
+  top: 190px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  font-size: 16px;
+}
+#hud .feed div {
+  background: rgba(15, 18, 32, 0.8);
+  border-radius: 999px;
+  padding: 5px 14px;
+  transition: opacity 0.6s;
+}
+#hud .feed div.gone {
+  opacity: 0;
+}
+#hud .center {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 62%;
+  text-align: center;
+  font-size: 20px;
+}
+#hud .center .dead {
+  font-size: 54px;
+  color: #ff5d5d;
+}
+#hud .center .hint {
+  display: inline-block;
+  background: rgba(15, 18, 32, 0.78);
+  border-radius: 999px;
+  padding: 6px 18px;
+  font-size: 17px;
+}
+#hud .banner {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 30%;
+  text-align: center;
+  font-size: 110px;
+  opacity: 0;
+  transform: scale(0.6);
+  text-shadow:
+    0 6px 0 var(--ink),
+    0 12px 30px rgba(0, 0, 0, 0.4);
+}
+#hud .banner.show {
+  animation: banner 1.2s ease-out forwards;
+}
+@keyframes banner {
+  0% {
+    opacity: 0;
+    transform: scale(0.5) rotate(-6deg);
+  }
+  15% {
+    opacity: 1;
+    transform: scale(1.1) rotate(2deg);
+  }
+  25% {
+    transform: scale(1) rotate(0);
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+#hud .map {
+  position: absolute;
+  left: 20px;
+  bottom: 20px;
+  width: 120px;
+  height: 200px;
+  border-radius: 16px;
+  border: 4px solid #fff;
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.3);
+  image-rendering: pixelated;
+}
+#hud .net {
+  position: absolute;
+  left: 20px;
+  top: 16px;
+  font: 12px ui-monospace, monospace;
+  opacity: 0.8;
+}
+#hud .keys {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 12px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 500;
+  opacity: 0.8;
+}
+
+/* ================================================================ phones (body.touch) */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+body {
+  overscroll-behavior: none;
+}
+body.touch #game {
+  touch-action: none;
+}
+body.touch button,
+body.touch .weapon,
+body.touch .link {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+body.touch button:hover {
+  transform: none;
+}
+.logo.menu-logo {
+  font-size: 64px;
+}
+
+/* ---------------------------------------------------------------- on-screen controls */
+#touch {
+  position: absolute;
+  inset: 0;
+  pointer-events: auto;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+#touch .stick {
+  position: absolute;
+  width: 120px;
+  height: 120px;
+  margin: -60px 0 0 -60px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.6);
+  background: rgba(15, 18, 32, 0.25);
+  pointer-events: none;
+}
+#touch .stick.rest {
+  left: calc(100px + env(safe-area-inset-left));
+  top: calc(100% - 96px - env(safe-area-inset-bottom));
+  opacity: 0.45;
+}
+#touch .stick i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 54px;
+  height: 54px;
+  margin: -27px 0 0 -27px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.25);
+}
+#touch .tb {
+  position: absolute;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 15px;
+  color: #fff;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.4);
+  background: rgba(15, 18, 32, 0.45);
+  border: 3px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.25);
+  transition: transform 0.06s;
+}
+#touch .tb span {
+  pointer-events: none;
+}
+#touch .tb.on {
+  background: var(--me, var(--a));
+  transform: scale(0.93);
+}
+#touch .b-fire {
+  width: 96px;
+  height: 96px;
+  right: calc(26px + env(safe-area-inset-right));
+  bottom: calc(28px + env(safe-area-inset-bottom));
+  font-size: 20px;
+  background: rgba(255, 255, 255, 0.18);
+}
+#touch .b-swim {
+  width: 68px;
+  height: 68px;
+  right: calc(140px + env(safe-area-inset-right));
+  bottom: calc(20px + env(safe-area-inset-bottom));
+}
+#touch .b-jump {
+  width: 62px;
+  height: 62px;
+  right: calc(44px + env(safe-area-inset-right));
+  bottom: calc(140px + env(safe-area-inset-bottom));
+}
+#touch .b-bomb {
+  width: 58px;
+  height: 58px;
+  right: calc(128px + env(safe-area-inset-right));
+  bottom: calc(108px + env(safe-area-inset-bottom));
+  font-size: 13px;
+}
+#touch .b-special {
+  width: 74px;
+  height: 74px;
+  right: calc(22px + env(safe-area-inset-right));
+  top: calc(12px + env(safe-area-inset-top));
+  background: conic-gradient(var(--me, var(--a)) calc(var(--k, 0) * 360deg), rgba(15, 18, 32, 0.45) 0);
+}
+#touch .b-special.ready {
+  animation: pulse 0.7s infinite;
+  box-shadow: 0 0 24px 6px var(--me, var(--a));
+}
+
+/* ---------------------------------------------------------------- the HUD on a phone */
+body.touch #hud .keys,
+body.touch #hud .spec {
+  display: none;
+}
+body.touch #hud .top {
+  top: calc(8px + env(safe-area-inset-top));
+  gap: 8px;
+}
+body.touch #hud .clock {
+  font-size: 24px;
+  padding: 3px 14px;
+  min-width: 70px;
+  border-width: 3px;
+}
+body.touch #hud .head {
+  width: 30px;
+  height: 30px;
+  border-width: 2px;
+}
+body.touch #hud .bar {
+  top: calc(56px + env(safe-area-inset-top));
+  height: 9px;
+}
+body.touch #hud .turf {
+  top: calc(96px + env(safe-area-inset-top));
+  right: calc(24px + env(safe-area-inset-right));
+  font-size: 18px;
+}
+body.touch #hud .map {
+  left: calc(10px + env(safe-area-inset-left));
+  top: calc(10px + env(safe-area-inset-top));
+  bottom: auto;
+  width: 60px;
+  height: 100px;
+  border-width: 3px;
+  border-radius: 10px;
+}
+body.touch #hud .net {
+  left: calc(78px + env(safe-area-inset-left));
+  top: calc(12px + env(safe-area-inset-top));
+}
+body.touch #hud .feed {
+  right: auto;
+  left: calc(10px + env(safe-area-inset-left));
+  top: calc(120px + env(safe-area-inset-top));
+  align-items: flex-start;
+  font-size: 13px;
+  gap: 4px;
+}
+body.touch #hud .feed div {
+  padding: 3px 10px;
+}
+body.touch #hud .center {
+  top: 56%;
+  font-size: 16px;
+}
+body.touch #hud .center .dead {
+  font-size: 40px;
+}
+body.touch #hud .center .hint {
+  font-size: 14px;
+}
+body.touch #hud .banner {
+  font-size: 72px;
+}
+
+/* ---------------------------------------------------------------- short (landscape phone) screens */
+@media (max-height: 540px) {
+  .logo {
+    font-size: min(15vw, 150px, 26vh);
+  }
+  .logo.menu-logo {
+    font-size: 38px;
+  }
+  .press {
+    margin-top: 18px;
+    font-size: 18px;
+  }
+  .card {
+    padding: 14px 18px;
+    border-radius: 18px;
+    max-height: calc(100vh - 16px);
+    max-height: calc(100dvh - 16px);
+    box-sizing: border-box;
+  }
+  .card h1 {
+    font-size: 24px;
+  }
+  .card h2 {
+    margin: 10px 0 6px;
+    font-size: 12px;
+  }
+  .card p {
+    margin: 2px 0 8px;
+    font-size: 14px;
+  }
+  button {
+    font-size: 15px;
+    padding: 9px 16px;
+  }
+  button.go {
+    font-size: 18px;
+    padding: 10px 24px;
+  }
+  button.big {
+    font-size: 18px;
+    padding: 10px 18px;
+    margin: 4px 0;
+  }
+  button.big small {
+    font-size: 12px;
+  }
+  input.txt {
+    font-size: 16px; /* iOS zooms into anything smaller */
+    padding: 6px 10px;
+  }
+  .weapon {
+    padding: 8px;
+    border-radius: 14px;
+  }
+  .weapon b {
+    font-size: 15px;
+  }
+  .weapon span {
+    font-size: 11px;
+  }
+  .team {
+    padding: 8px;
+  }
+  .team h3 {
+    font-size: 15px;
+    margin-bottom: 4px;
+  }
+  .slot {
+    padding: 4px 10px;
+    margin: 4px 0;
+    font-size: 14px;
+  }
+  .code-big {
+    font-size: 28px;
+  }
+  .verdict {
+    font-size: 32px;
+  }
+  .result-bar {
+    height: 38px;
+    font-size: 18px;
+    margin: 8px 0;
+  }
+  table.stats {
+    font-size: 13px;
+  }
+  table.stats td,
+  table.stats th {
+    padding: 3px 6px;
+  }
+  .keys-list {
+    font-size: 13px;
+  }
+}
+
+/* ---------------------------------------------------------------- hold it sideways */
+#rotate {
+  display: none;
+}
+@media (orientation: portrait) {
+  body.touch #rotate {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    background: #1b1d2a;
+    color: #fff;
+    font: 600 20px "Fredoka", system-ui, sans-serif;
+    text-align: center;
+  }
+  body.touch #rotate i {
+    width: 46px;
+    height: 80px;
+    border: 4px solid #fff;
+    border-radius: 10px;
+    animation: turn 1.8s ease-in-out infinite;
+  }
+}
+@keyframes turn {
+  0%,
+  25% {
+    transform: rotate(0);
+  }
+  60%,
+  100% {
+    transform: rotate(-90deg);
+  }
+}
+
+/* The main buttons of a long card stay in reach: pinned to the card's bottom edge. */
+.card .actions {
+  position: sticky;
+  bottom: -26px;
+  margin: 16px -30px -26px;
+  padding: 12px 30px 16px;
+  background: var(--paper);
+  border-top: 2px solid #ece5d6;
+  z-index: 1;
+}
+@media (max-height: 540px) {
+  .card .actions {
+    bottom: -14px;
+    margin: 10px -18px -14px;
+    padding: 8px 18px 10px;
+  }
+}
+.logo.menu-logo {
+  margin-bottom: 10px;
+}
+#hud .ink span {
+  display: none;
+}

@@ -1,0 +1,46 @@
+name: Deploy to GitHub Pages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+        with:
+          version: 10
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+        env:
+          # Optional: your own matchmaking broker / TURN server (Settings → Secrets and variables →
+          # Actions → Variables). Left unset, the game uses PeerJS's free broker and public STUN.
+          VITE_PEER_HOST: ${{ vars.PEER_HOST }}
+          VITE_PEER_PORT: ${{ vars.PEER_PORT }}
+          VITE_PEER_PATH: ${{ vars.PEER_PATH }}
+          VITE_PEER_KEY: ${{ vars.PEER_KEY }}
+          VITE_ICE_SERVERS: ${{ vars.ICE_SERVERS }}
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
