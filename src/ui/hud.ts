@@ -29,14 +29,17 @@ export class Hud {
   private hitT = 0;
   private colors: [number, number] = [0, 0];
 
-  constructor(parent: HTMLElement) {
+  constructor(
+    parent: HTMLElement,
+    private readonly touch = false,
+  ) {
     this.root = document.createElement("div");
     this.root.id = "hud";
     this.root.innerHTML = `
       <div class="top"><div class="heads l"></div><div class="clock">3:00</div><div class="heads r"></div></div>
       <div class="bar"><div class="a"></div><div class="b"></div></div>
       <div class="cross"><i></i><i></i><i></i><i></i><b></b></div>
-      <div class="ink"><div class="fill"></div><span>INK</span></div>
+      <div class="ink"><div class="fill"></div><span>墨水</span></div>
       <div class="spec"><div class="ring"></div><span>0%</span><em>Q</em></div>
       <div class="turf">0<small>p</small></div>
       <div class="feed"></div>
@@ -44,7 +47,7 @@ export class Hud {
       <div class="banner"></div>
       <canvas class="map" width="120" height="200"></canvas>
       <div class="net"></div>
-      <div class="keys">WASD move · Mouse aim · LMB fire · RMB / E bomb · Shift swim · Space jump · Q special</div>`;
+      ${touch ? "" : `<div class="keys">WASD 移动 · 鼠标 瞄准 · 左键 开火 · 右键 / E 炸弹 · Shift 潜游 · 空格 跳 · Q 大招</div>`}`;
     parent.appendChild(this.root);
     const $ = (s: string) => this.root.querySelector(s) as HTMLElement;
     this.clock = $(".clock");
@@ -128,7 +131,7 @@ export class Hud {
 
   update(dt: number, world: World, me: Player | undefined, showBar: boolean): void {
     const s = Math.max(0, Math.ceil(world.clock));
-    this.clock.textContent = world.state === "countdown" ? "READY" : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+    this.clock.textContent = world.state === "countdown" ? "准备" : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
     this.clock.classList.toggle("hurry", world.state === "play" && s <= 30);
     for (const h of this.heads) {
       const p = world.players.get(+h.dataset.id!);
@@ -148,12 +151,13 @@ export class Hud {
       const k = Math.min(1, me.special / me.w.special);
       this.spec.style.setProperty("--k", String(k));
       this.spec.classList.toggle("full", k >= 1);
-      this.specTxt.textContent = k >= 1 ? "READY" : `${Math.floor(k * 100)}%`;
-      this.turf.innerHTML = `${Math.floor(me.turf)}<small>p</small>`;
+      this.specTxt.textContent = k >= 1 ? "就绪" : `${Math.floor(k * 100)}%`;
+      this.turf.innerHTML = `${Math.floor(me.turf)}<small>点</small>`;
       this.cross.classList.toggle("charge", me.charge > 0);
       this.cross.style.setProperty("--c", String(me.charge));
-      if (me.dead) this.center.innerHTML = `<div class="dead">SPLATTED</div><div>back in ${Math.max(0, me.respawnT).toFixed(1)} s</div>`;
-      else if (me.ink < 12 && world.state === "play") this.center.innerHTML = `<div class="hint">Low ink · hold <b>Shift</b> in your ink to refill</div>`;
+      if (me.dead) this.center.innerHTML = `<div class="dead">被击倒了</div><div>${Math.max(0, me.respawnT).toFixed(1)} 秒后复活</div>`;
+      else if (me.ink < 12 && world.state === "play")
+        this.center.innerHTML = `<div class="hint">墨水不够了 · ${this.touch ? "点<b>潜游</b>" : "按住 <b>Shift</b>"}在自己的墨里补墨</div>`;
       else this.center.innerHTML = "";
     }
     this.mapT -= dt;

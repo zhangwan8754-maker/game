@@ -7,16 +7,68 @@
  * Quick match: the first player to find the shared quick-match id free becomes that lobby's
  * host; the next ones join it until the host starts, which frees the id for a new lobby.
  */
-import Peer, { type DataConnection } from "peerjs";
+import Peer, { type DataConnection, type PeerOptions } from "peerjs";
+import { MAX_PLAYERS } from "../config";
 
 export type Msg = { t: string; [k: string]: unknown };
 
-const ICE: RTCIceServer[] = [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }, { urls: "stun:stun.cloudflare.com:3478" }];
-const OPTS = { config: { iceServers: ICE }, debug: 0 };
+/**
+ * STUN servers find each player's public address. Google's are unreachable from mainland China,
+ * so a China-reachable one goes first. No TURN (relay) server by default: set VITE_ICE_SERVERS
+ * at build time (a JSON array of RTCIceServer) to add one; see the README.
+ */
+const DEFAULT_ICE: RTCIceServer[] = [
+  { urls: "stun:stun.miwifi.com:3478" },
+  { urls: "stun:stun.cloudflare.com:3478" },
+  { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
+];
+
+function iceServers(): RTCIceServer[] {
+  const raw = import.meta.env.VITE_ICE_SERVERS as string | undefined;
+  if (raw)
+    try {
+      const v = JSON.parse(raw) as unknown;
+      if (Array.isArray(v) && v.length) return v as RTCIceServer[];
+    } catch {
+      console.warn("VITE_ICE_SERVERS is not a JSON array; using the defaults");
+    }
+  return DEFAULT_ICE;
+}
+
+/**
+ * The matchmaking broker (it only introduces players; the match itself is peer to peer).
+ * Default: PeerJS's free cloud broker. Your own (`npx peer --port 9000`), in order of priority:
+ *   a link with ?broker=wss://host:port/path   (kept in the room links the game shares)
+ *   VITE_PEER_HOST / _PORT / _PATH / _SECURE / _KEY at build time
+ */
+export const BROKER_PARAM = new URLSearchParams(location.search).get("broker");
+
+function broker(): Partial<PeerOptions> {
+  if (BROKER_PARAM)
+    try {
+      const u = new URL(/^[a-z]+:\/\//i.test(BROKER_PARAM) ? BROKER_PARAM : `https://${BROKER_PARAM}`);
+      const secure = u.protocol === "https:" || u.protocol === "wss:";
+      return { host: u.hostname, port: +(u.port || (secure ? 443 : 80)), path: u.pathname || "/", secure };
+    } catch {
+      console.warn("bad ?broker= parameter; using the default broker");
+    }
+  const env = import.meta.env;
+  if (env.VITE_PEER_HOST)
+    return {
+      host: env.VITE_PEER_HOST as string,
+      port: +(env.VITE_PEER_PORT || 443),
+      path: (env.VITE_PEER_PATH as string) || "/",
+      secure: env.VITE_PEER_SECURE !== "false",
+      key: (env.VITE_PEER_KEY as string) || "peerjs",
+    };
+  return {};
+}
+
+const OPTS: PeerOptions = { ...broker(), config: { iceServers: iceServers() }, debug: 0 };
 
 declare const __BUILD__: string;
 export const BUILD = typeof __BUILD__ === "string" ? __BUILD__ : "dev";
-const idFor = (room: string) => `ink-rush-${BUILD}-${room}`.replace(/[^A-Za-z0-9-]/g, "");
+const idFor = (room: string) => `inkrush2v2-${BUILD}-${room}`.replace(/[^A-Za-z0-9-]/g, "");
 
 export class HostSession {
   private peer: Peer | null = null;
@@ -42,7 +94,7 @@ export class HostSession {
     this.peer = p;
     p.on("open", () => this.onReady?.());
     p.on("connection", (c) => {
-      if (!this.open || this.conns.size >= 7) {
+      if (!this.open || this.conns.size >= MAX_PLAYERS - 1) {
         c.on("open", () => {
           c.send(JSON.stringify({ t: "busy" }));
           setTimeout(() => c.close(), 300);
@@ -72,7 +124,7 @@ export class HostSession {
     });
     p.on("error", (e: { type?: string }) => {
       if (e.type === "unavailable-id") taken();
-      else if (e.type !== "peer-unavailable") this.onError?.(`matchmaking broker: ${e.type ?? "error"}`);
+      else if (e.type !== "peer-unavailable") this.onError?.(`联机中介服务器出错（${e.type ?? "error"}）：检查网络后重新建房间`);
     });
     this.watch = window.setInterval(() => {
       const now = performance.now();
@@ -142,7 +194,7 @@ export class ClientSession {
         this.pingT = window.setInterval(() => {
           this.send({ t: "ping", at: performance.now() });
           // The host answers every ping: silence means its tab is gone.
-          if (performance.now() - this.heard > 8000) this.fail("the host went silent");
+          if (performance.now() - this.heard > 8000) this.fail("房主没有响应了");
         }, 1000);
       });
       c.on("data", (d) => {
@@ -157,10 +209,10 @@ export class ClientSession {
         if (m.t === "pong") this.rtt = performance.now() - (m.at as number);
         else this.onMsg?.(m);
       });
-      c.on("close", () => this.fail("the host left"));
-      c.on("error", () => this.fail("the link to the host broke"));
+      c.on("close", () => this.fail("房主离开了"));
+      c.on("error", () => this.fail("和房主的连接断了"));
       setTimeout(() => {
-        if (!c.open && !this.closed) this.fail("couldn't open a direct link to the host's network");
+        if (!c.open && !this.closed) this.fail("连不上房主的网络（换成同一个 Wi-Fi 或者开热点再试）");
       }, 20000);
     });
     p.on("error", (e: { type?: string }) => {
@@ -170,7 +222,7 @@ export class ClientSession {
           p.destroy();
           missing();
         }
-      } else this.fail(`matchmaking broker: ${e.type ?? "error"}`);
+      } else this.fail(`联机中介服务器出错（${e.type ?? "error"}）`);
     });
   }
 

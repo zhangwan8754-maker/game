@@ -1,6 +1,8 @@
 /**
- * INK RUSH: screens, input, camera, the fixed-step loop, and the glue between the World and
- * the network. Offline (vs bots) is simply a host with no guests: one code path.
+ * INK RUSH (2 v 2, phone edition): screens, input, camera, the fixed-step loop, and the glue
+ * between the World and the network. Offline (vs bots) is simply a host with no guests: one
+ * code path. On a touch screen the on-screen controls (ui/touch.ts) stand in for the keyboard
+ * and mouse.
  */
 import * as THREE from "three";
 import "./style.css";
@@ -8,35 +10,15 @@ import { Sfx } from "./audio";
 import { BOT_SKILL, type BotSkill, MATCH, NET, PALETTES, TEAM_SIZE, type Team, WEAPONS, WEAPON_ORDER, type WeaponId } from "./config";
 import { BotBrain, NavGrid } from "./game/bot";
 import { aimDir, type GameEvent, Player, World } from "./game/world";
-import { ClientSession, HostSession, type Msg, randomCode } from "./net/session";
+import { BROKER_PARAM, ClientSession, HostSession, type Msg, randomCode } from "./net/session";
 import { Actors } from "./render/actors";
 import { escapeHtml, Hud } from "./ui/hud";
-import { Arena, MAPS } from "./world/map";
+import { goFullscreen, isTouchDevice, TouchControls } from "./ui/touch";
+import { Arena, BACKDROP_MAP, MAPS } from "./world/map";
 import { ArenaView } from "./world/scene";
 
-// ------------------------------------------------------------------ renderer
-
-const canvas = document.getElementById("game") as HTMLCanvasElement;
-const ui = document.getElementById("ui") as HTMLElement;
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.05;
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(68, 16 / 9, 0.1, 900);
-function resize(): void {
-  renderer.setSize(window.innerWidth, window.innerHeight, false);
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-}
-window.addEventListener("resize", resize);
-resize();
-
-const sfx = new Sfx();
-const hud = new Hud(ui);
-hud.show(false);
+const touchMode = isTouchDevice();
+document.body.classList.toggle("touch", touchMode);
 
 // ------------------------------------------------------------------ settings
 
@@ -56,18 +38,88 @@ const store = {
     }
   },
 };
+
+/** Render quality: phones default to the middle one. */
+type Quality = "low" | "mid" | "high";
+const QUALITY: Record<Quality, { label: string; ratio: number; shadows: boolean; shadowSize: number }> = {
+  low: { label: "流畅", ratio: 1, shadows: false, shadowSize: 1024 },
+  mid: { label: "标准", ratio: 1.5, shadows: true, shadowSize: 1024 },
+  high: { label: "高清", ratio: 1.75, shadows: true, shadowSize: 2048 },
+};
+const storedQuality = store.get("quality", "");
+
 const settings = {
-  name: store.get("name", "Blot-" + Math.floor(1000 + Math.random() * 9000)),
+  name: store.get("name", "玩家" + Math.floor(1000 + Math.random() * 9000)),
   weapon: (store.get("weapon", "blaster") as WeaponId) in WEAPONS ? (store.get("weapon", "blaster") as WeaponId) : "blaster",
   sens: +store.get("sens", "1") || 1,
   invert: store.get("invert", "0") === "1",
+  /** Touch look speed, and aim assist (touch only). */
+  tsens: +store.get("tsens", "1") || 1,
+  assist: store.get("assist", "1") === "1",
+  quality: (storedQuality in QUALITY ? storedQuality : touchMode ? "mid" : "high") as Quality,
 };
 const saveSettings = () => {
   store.set("name", settings.name);
   store.set("weapon", settings.weapon);
   store.set("sens", String(settings.sens));
   store.set("invert", settings.invert ? "1" : "0");
+  store.set("tsens", String(settings.tsens));
+  store.set("assist", settings.assist ? "1" : "0");
+  store.set("quality", settings.quality);
 };
+
+// ------------------------------------------------------------------ renderer
+
+const canvas = document.getElementById("game") as HTMLCanvasElement;
+const ui = document.getElementById("ui") as HTMLElement;
+// Antialiasing is fixed when the context is made: phones skip it unless they asked for "high".
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: !touchMode || settings.quality === "high", powerPreference: "high-performance" });
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(68, 16 / 9, 0.1, 900);
+function resize(): void {
+  renderer.setSize(window.innerWidth, window.innerHeight, false);
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener("resize", resize);
+
+/** Pixel ratio and shadows for the chosen quality; safe to call any time. */
+function applyQuality(): void {
+  const q = QUALITY[settings.quality];
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, q.ratio));
+  resize();
+  if (renderer.shadowMap.enabled !== q.shadows) {
+    renderer.shadowMap.enabled = q.shadows;
+    // Shaders are built with or without shadows: rebuild them.
+    scene.traverse((o) => {
+      const m = (o as THREE.Mesh).material;
+      if (m) for (const x of Array.isArray(m) ? m : [m]) x.needsUpdate = true;
+    });
+  }
+  for (const v of [arenaView, backdrop]) {
+    if (!v) continue;
+    const s = v.sun.shadow;
+    if (s.mapSize.x !== q.shadowSize) {
+      s.mapSize.set(q.shadowSize, q.shadowSize);
+      s.map?.dispose();
+      s.map = null;
+    }
+  }
+}
+
+const sfx = new Sfx();
+const hud = new Hud(ui, touchMode);
+hud.show(false);
+const touch = new TouchControls(ui);
+touch.onTouch = () => sfx.start();
+/** The HUD and, on a phone, the on-screen controls. */
+function hudShow(on: boolean): void {
+  hud.show(on);
+  touch.show(on && touchMode);
+}
 
 // ------------------------------------------------------------------ input
 
@@ -85,10 +137,11 @@ window.addEventListener("keyup", (e) => keys.delete(e.code));
 window.addEventListener("blur", () => {
   keys.clear();
   mouse.fire = mouse.bomb = false;
+  touch.reset();
 });
 canvas.addEventListener("mousedown", (e) => {
   sfx.start();
-  if (inMatch() && !pointerLocked) canvas.requestPointerLock?.();
+  if (inMatch() && !pointerLocked && !touchMode) canvas.requestPointerLock?.();
   if (e.button === 0) mouse.fire = true;
   if (e.button === 2) mouse.bomb = true;
 });
@@ -105,6 +158,9 @@ window.addEventListener("mousemove", (e) => {
 document.addEventListener("pointerlockchange", () => {
   pointerLocked = document.pointerLockElement === canvas;
 });
+// iOS Safari: no pinch-zoom or double-tap zoom over the game.
+document.addEventListener("gesturestart", (e) => e.preventDefault());
+document.addEventListener("dblclick", (e) => e.preventDefault());
 
 // ------------------------------------------------------------------ match state
 
@@ -160,6 +216,7 @@ function buildWorld(s: MatchSetup, entries: RosterEntry[], authority: boolean): 
   const colors = PALETTES[s.palette];
   arenaView = new ArenaView(arena, world.paint, colors);
   arenaView.applyTo(scene);
+  applyQuality();
   actors = new Actors(colors);
   scene.add(actors.group);
   hud.setColors(colors);
@@ -177,6 +234,7 @@ function buildWorld(s: MatchSetup, entries: RosterEntry[], authority: boolean): 
   world.state = "countdown";
   world.clock = MATCH.countdown;
   hud.roster(world);
+  touch.reset();
   const m = me();
   if (m) {
     camYaw = m.yaw;
@@ -218,13 +276,13 @@ function hostMsg(peer: string, m: Msg): void {
   if (m.t === "ping") return host?.send(peer, { t: "pong", at: m.at });
   if (m.t === "hello") {
     if (m.v !== BUILD_ID) {
-      host?.send(peer, { t: "refuse", why: "different version of the game: both reload the page" });
+      host?.send(peer, { t: "refuse", why: "游戏版本不一致：双方都刷新一下页面再试" });
       return;
     }
     const id = Math.max(0, ...roster.map((r) => r.id).filter((i) => i < 100)) + 1;
     const counts = [0, 1].map((t) => roster.filter((r) => r.team === t && !r.bot).length);
     const team: Team = counts[0] <= counts[1] ? 0 : 1;
-    roster.push({ id, name: String(m.name ?? "Guest").slice(0, 16), team, weapon: (m.weapon as WeaponId) in WEAPONS ? (m.weapon as WeaponId) : "blaster", bot: false, slot: 0, peer });
+    roster.push({ id, name: String(m.name ?? "玩家").slice(0, 16), team, weapon: (m.weapon as WeaponId) in WEAPONS ? (m.weapon as WeaponId) : "blaster", bot: false, slot: 0, peer });
     peerToId.set(peer, id);
     host?.send(peer, { t: "welcome", id });
     lobbyChanged();
@@ -288,13 +346,13 @@ function hostLeave(peer: string): void {
     // A bot takes over their spot for the rest of the match.
     const p = world.players.get(id);
     if (p) {
-      const bot = new Player(p.id, p.name + " (bot)", p.team, p.weapon, true, p.slot);
+      const bot = new Player(p.id, p.name + "（机器人）", p.team, p.weapon, true, p.slot);
       bot.pos.copy(p.pos);
       bot.turf = p.turf;
       bot.kills = p.kills;
       world.players.set(id, bot);
       brains.set(id, new BotBrain(bot, setup.skill, id));
-      hud.feedLine(`${escapeHtml(p.name)} left · a bot steps in`);
+      hud.feedLine(`${escapeHtml(p.name)} 离开了 · 机器人接替`);
     }
   }
   lobbyChanged();
@@ -333,10 +391,10 @@ function hostSnapshot(dt: number): void {
 function clientMsg(m: Msg): void {
   if (m.t === "welcome") {
     myId = m.id as number;
-    lobbyStatus = "in the lobby · waiting for the host to start";
+    lobbyStatus = "已进入房间 · 等房主开始";
     renderLobby();
   } else if (m.t === "refuse" || m.t === "busy") {
-    showError(m.t === "busy" ? "That room is mid-match or full. Try again in a minute." : String(m.why));
+    showError(m.t === "busy" ? "这个房间正在对战或已满（最多 4 人），过一会儿再试。" : String(m.why));
   } else if (m.t === "lobby") {
     roster = m.roster as RosterEntry[];
     setup = m.setup as MatchSetup;
@@ -430,11 +488,11 @@ function drawEvents(): void {
     } else if (e.k === "splatted") {
       const v = world.players.get(e.id);
       const k = world.players.get(e.by);
-      hud.feedLine(`${hud.name(k)} splatted ${hud.name(v)}`);
+      hud.feedLine(`${hud.name(k)} 击倒了 ${hud.name(v)}`);
       if (e.id === myId || e.by === myId) sfx.splatted();
     } else if (e.k === "special") {
       const p = world.players.get(e.id);
-      if (p) hud.feedLine(`${hud.name(p)} · INK BURST!`);
+      if (p) hud.feedLine(`${hud.name(p)} · 大招！`);
     }
   }
 }
@@ -451,18 +509,21 @@ function localControls(p: Player): void {
   if (keys.has("KeyS")) ay -= 1;
   if (keys.has("KeyD")) ax -= 1;
   if (keys.has("KeyA")) ax += 1;
-  const l = Math.hypot(ax, ay) || 1;
+  // The touch stick is analog (right is +x on screen, ax is +left).
+  ax -= touch.mx;
+  ay += touch.my;
+  const l = Math.max(1, Math.hypot(ax, ay));
   ax /= l;
   ay /= l;
   const c = p.c;
   c.mx = fwdX * ay + fwdZ * ax;
   c.mz = fwdZ * ay - fwdX * ax;
   const playing = world?.state === "play";
-  c.jump = keys.has("Space") && playing;
-  c.swim = (keys.has("ShiftLeft") || keys.has("ShiftRight")) && !!playing;
-  c.fire = mouse.fire && !!playing;
-  c.bomb = (mouse.bomb || keys.has("KeyE")) && !!playing;
-  c.special = keys.has("KeyQ") && !!playing;
+  c.jump = (keys.has("Space") || touch.jump) && playing;
+  c.swim = (keys.has("ShiftLeft") || keys.has("ShiftRight") || touch.swim) && !!playing;
+  c.fire = (mouse.fire || touch.fire) && !!playing;
+  c.bomb = (mouse.bomb || keys.has("KeyE") || touch.bomb) && !!playing;
+  c.special = (keys.has("KeyQ") || touch.special) && !!playing;
   if (!playing) c.mx = c.mz = 0;
   // Aim where the crosshair points: from the camera into the world, then from the muzzle to that.
   const dir = aimDir(camYaw, camPitch, _aim);
@@ -481,6 +542,11 @@ function updateCamera(dt: number, p: Player | undefined, pos: THREE.Vector3): vo
   camYaw -= mouse.dx * sens;
   camPitch += (settings.invert ? 1 : -1) * mouse.dy * sens;
   mouse.dx = mouse.dy = 0;
+  const [tdx, tdy] = touch.takeLook();
+  const tsens = 0.0058 * settings.tsens;
+  camYaw -= tdx * tsens;
+  camPitch += (settings.invert ? 1 : -1) * tdy * tsens;
+  if (touchMode && settings.assist && p) aimAssist(dt, p);
   camPitch = Math.max(-1.1, Math.min(0.85, camPitch));
   if (!world || !p) return;
   const pivot = new THREE.Vector3(pos.x, pos.y + (p.swim ? 0.9 : 1.55), pos.z);
@@ -495,6 +561,39 @@ function updateCamera(dt: number, p: Player | undefined, pos: THREE.Vector3): vo
   camPos.lerp(want, Math.min(1, dt * 18));
   camera.position.copy(camPos);
   camera.lookAt(camPos.clone().addScaledVector(aimDir(camYaw, camPitch, new THREE.Vector3()), 10));
+}
+
+/**
+ * Touch aim assist: while firing, the camera eases toward an enemy that is already near the
+ * crosshair (within about 9°), in range and in sight. A thumb can't flick like a mouse; this
+ * only finishes an aim the player started. Hidden (submerged) enemies are never tracked.
+ */
+const _to = new THREE.Vector3();
+function aimAssist(dt: number, p: Player): void {
+  if (!world || world.state !== "play" || p.dead || !p.c.fire) return;
+  let bestErr = 0.16;
+  let byaw = 0;
+  let bpitch = 0;
+  for (const q of world.players.values()) {
+    if (q.team === p.team || q.dead || q.submerged) continue;
+    const pos = interpPos(q);
+    if (Math.hypot(pos.x - p.pos.x, pos.z - p.pos.z) > p.w.range + 3) continue;
+    _to.set(pos.x - camPos.x, pos.y + 0.8 - camPos.y, pos.z - camPos.z);
+    const yaw = Math.atan2(_to.x, _to.z);
+    const pitch = Math.atan2(_to.y, Math.hypot(_to.x, _to.z));
+    const dyaw = Math.atan2(Math.sin(yaw - camYaw), Math.cos(yaw - camYaw));
+    const dpitch = pitch - camPitch;
+    const err = Math.hypot(dyaw, dpitch);
+    if (err >= bestErr) continue;
+    if (world.arena.raycast(camPos.x, camPos.y, camPos.z, pos.x, pos.y + 0.8, pos.z) < 0.98) continue;
+    bestErr = err;
+    byaw = dyaw;
+    bpitch = dpitch;
+  }
+  if (bestErr >= 0.16) return;
+  const k = Math.min(1, dt * 3);
+  camYaw += byaw * k;
+  camPitch += bpitch * k;
 }
 
 // ------------------------------------------------------------------ interpolation
@@ -601,8 +700,12 @@ function frame(now: number): void {
     arenaView.update(tAll);
     actors.update(dt, world, m?.team ?? 0, camPos, tAll, (p) => ({ pos: renderPos(p), yaw: interpYaw(p) }));
     hud.update(dt, world, m, world.state === "play" && world.clock < 60);
+    if (m && touch.visible) {
+      if (m.dead) touch.swim = false;
+      touch.update(m.special / m.w.special, m.swim);
+    }
     countdownFeedback();
-    const rtt = client ? `ping ${Math.round(client.rtt)} ms` : host ? `host · ${host.conns.size} guest${host.conns.size === 1 ? "" : "s"}` : "";
+    const rtt = client ? `延迟 ${Math.round(client.rtt)} ms` : host ? `房主 · 已连接 ${host.conns.size} 人` : "";
     hud.netLine(rtt);
     if (world.state === "results") {
       resultsT += dt;
@@ -628,7 +731,7 @@ function countdownFeedback(): void {
     }
   } else if (world.state === "play" && countdownShown > 0) {
     countdownShown = 0;
-    hud.bannerText("GO!", "go");
+    hud.bannerText("开始！", "go");
     sfx.whistle();
   }
 }
@@ -653,11 +756,14 @@ function hideScreen(): void {
 const $ = (s: string) => screen.querySelector(s) as HTMLElement;
 const on = (s: string, f: () => void) => {
   const e = screen.querySelector(s);
-  if (e) (e as HTMLElement).onclick = () => {
-    sfx.start();
-    sfx.ui();
-    f();
-  };
+  if (e)
+    (e as HTMLElement).onclick = () => {
+      sfx.start();
+      sfx.ui();
+      // Every tap is a user gesture: the moment a phone browser lets us go full screen.
+      if (touchMode) goFullscreen();
+      f();
+    };
 };
 
 function onKey(code: string): void {
@@ -670,12 +776,13 @@ function onKey(code: string): void {
 function title(): void {
   show(
     "title",
-    `<div><div class="logo"><span>INK</span><span>RUSH</span><small>4 v 4 TURF WAR</small></div>
-     <div class="press">PRESS ANY KEY</div></div>`,
+    `<div><div class="logo"><span>INK</span><span>RUSH</span><small>2 v 2 涂地对战</small></div>
+     <div class="press">${touchMode ? "点击屏幕开始" : "按任意键开始"}</div></div>`,
     true,
   );
   screen.onclick = () => {
     sfx.start();
+    if (touchMode) goFullscreen();
     menu();
   };
 }
@@ -697,20 +804,25 @@ function bindWeapons(after?: () => void): void {
 
 function menu(): void {
   screen.onclick = null;
+  const sensKey = touchMode ? "tsens" : "sens";
   show(
     "menu",
     `<div class="card">
-      <div class="logo" style="font-size:64px"><span>INK</span><span>RUSH</span></div>
-      <button class="big go" id="vbots">Turf War vs bots <small>4 v 4 · offline</small></button>
-      <button class="big" id="online">Online <small>rooms · quick match · up to 8</small></button>
-      <button class="big alt" id="help">How to play</button>
-      <h2>Your name</h2>
+      <div class="logo menu-logo"><span>INK</span><span>RUSH</span></div>
+      <button class="big go" id="online">和朋友联机 <small>2v2 · 建房间 / 输房间码 · 最多 4 人</small></button>
+      <button class="big" id="vbots">和机器人练习 <small>2v2 · 单机</small></button>
+      <button class="big alt" id="help">怎么玩</button>
+      <h2>你的名字</h2>
       <div class="row"><input class="txt" id="name" maxlength="16" value="${escapeHtml(settings.name)}"/></div>
-      <h2>Your weapon</h2>
+      <h2>武器</h2>
       ${weaponPicker()}
-      <h2>Mouse</h2>
-      <div class="row"><input type="range" id="sens" min="0.3" max="2.5" step="0.05" value="${settings.sens}"/> <span class="small" id="sensv">${settings.sens.toFixed(2)}×</span>
-      <label class="small"><input type="checkbox" id="inv" ${settings.invert ? "checked" : ""}/> invert Y</label></div>
+      <h2>${touchMode ? "触屏视角" : "鼠标"}</h2>
+      <div class="row"><span class="small">灵敏度</span><input type="range" id="sens" min="0.3" max="2.5" step="0.05" value="${settings[sensKey]}"/> <span class="small" id="sensv">${settings[sensKey].toFixed(2)}×</span>
+      <label class="small"><input type="checkbox" id="inv" ${settings.invert ? "checked" : ""}/> 上下反转</label>
+      ${touchMode ? `<label class="small"><input type="checkbox" id="assist" ${settings.assist ? "checked" : ""}/> 辅助瞄准</label>` : ""}</div>
+      <h2>画质</h2>
+      <div class="row" id="quality">${(Object.keys(QUALITY) as Quality[]).map((q) => `<button class="${q === settings.quality ? "sel" : "alt"}" data-q="${q}">${QUALITY[q].label}</button>`).join("")}</div>
+      <p class="small">手机发烫或卡顿就选「流畅」。</p>
     </div>`,
   );
   bindWeapons();
@@ -721,27 +833,44 @@ function menu(): void {
   };
   const sens = $("#sens") as HTMLInputElement;
   sens.oninput = () => {
-    settings.sens = +sens.value;
-    $("#sensv").textContent = settings.sens.toFixed(2) + "×";
+    settings[sensKey] = +sens.value;
+    $("#sensv").textContent = settings[sensKey].toFixed(2) + "×";
     saveSettings();
   };
   ($("#inv") as HTMLInputElement).onchange = (e) => {
     settings.invert = (e.target as HTMLInputElement).checked;
     saveSettings();
   };
+  const assist = screen.querySelector("#assist") as HTMLInputElement | null;
+  if (assist)
+    assist.onchange = () => {
+      settings.assist = assist.checked;
+      saveSettings();
+    };
+  screen.querySelectorAll<HTMLButtonElement>("#quality button").forEach((b) => {
+    b.onclick = () => {
+      settings.quality = b.dataset.q as Quality;
+      saveSettings();
+      applyQuality();
+      sfx.ui();
+      screen.querySelectorAll("#quality button").forEach((x) => (x.className = x === b ? "sel" : "alt"));
+    };
+  });
   on("#vbots", setupScreen);
   on("#online", onlineScreen);
   on("#help", help);
 }
 
+const SKILL_NAME: Record<BotSkill, string> = { chill: "休闲", fresh: "普通", fierce: "凶猛" };
+
 function setupControls(editable: boolean): string {
   const opt = (id: string, items: [string, string][], cur: string) =>
     `<div class="row" data-group="${id}">${items.map(([v, l]) => `<button class="${v === cur ? "sel" : "alt"}" data-v="${v}" ${editable ? "" : "disabled"}>${l}</button>`).join("")}</div>`;
   return `
-    <h2>Stage</h2>${opt("map", MAPS.map((m, i) => [String(i), m.name]), String(setup.map))}
+    <h2>地图</h2>${opt("map", MAPS.map((m, i) => [String(i), m.name]), String(setup.map))}
     <p class="small">${MAPS[setup.map].blurb}</p>
-    <h2>Bot skill</h2>${opt("skill", (Object.keys(BOT_SKILL) as BotSkill[]).map((k) => [k, k[0].toUpperCase() + k.slice(1)]), setup.skill)}
-    <h2>Length</h2>${opt("seconds", [["90", "90 s"], ["180", "3 min"], ["300", "5 min"]], String(setup.seconds))}`;
+    <h2>机器人强度</h2>${opt("skill", (Object.keys(BOT_SKILL) as BotSkill[]).map((k) => [k, SKILL_NAME[k]]), setup.skill)}
+    <h2>时长</h2>${opt("seconds", [["90", "90 秒"], ["180", "3 分钟"], ["300", "5 分钟"]], String(setup.seconds))}`;
 }
 function bindSetup(after: () => void): void {
   screen.querySelectorAll<HTMLElement>("[data-group]").forEach((g) => {
@@ -762,10 +891,10 @@ function bindSetup(after: () => void): void {
 function setupScreen(): void {
   show(
     "setup",
-    `<div class="card"><h1>Turf War vs bots</h1><p>Ink more of the stage than the other team when the clock runs out.</p>
+    `<div class="card"><h1>和机器人练习</h1><p>你和 1 个机器人一队，对面 2 个机器人。时间到时，涂地面积大的一队获胜。</p>
      ${setupControls(true)}
-     <h2>Your weapon</h2>${weaponPicker()}
-     <div class="row" style="margin-top:20px"><button class="go" id="start">START!</button><button class="alt" id="back">Back</button></div></div>`,
+     <h2>武器</h2>${weaponPicker()}
+     <div class="row actions"><button class="go" id="start">开始！</button><button class="alt" id="back">返回</button></div></div>`,
   );
   bindSetup(setupScreen);
   bindWeapons();
@@ -781,12 +910,12 @@ function setupScreen(): void {
 function onlineScreen(): void {
   show(
     "online",
-    `<div class="card"><h1>Online</h1><p>Up to 8 players, 4 a side; bots fill the empty spots. The match runs in the host's browser and everyone links to it directly.</p>
-     <div class="row"><button class="go" id="create">Create room</button><button id="quick">Quick match</button></div>
-     <h2>Join a friend</h2>
-     <div class="row"><input class="txt code" id="code" maxlength="5" placeholder="CODE"/><button id="join">Join</button></div>
-     <p class="small" style="margin-top:16px">Desktop Chrome, Edge or Firefox. If two networks can't link directly (some strict office / school networks), that pair can't play together.</p>
-     <div class="row"><button class="alt" id="back">Back</button></div></div>`,
+    `<div class="card"><h1>和朋友联机</h1><p>2v2，一个房间最多 4 人，空位由机器人补上。房主的手机运行整局游戏，其他人直接连到房主。</p>
+     <div class="row"><button class="go" id="create">创建房间</button><button id="quick">快速匹配</button></div>
+     <h2>加入朋友的房间</h2>
+     <div class="row"><input class="txt code" id="code" maxlength="5" placeholder="房间码" autocapitalize="characters" autocomplete="off"/><button id="join">加入</button></div>
+     <p class="small" style="margin-top:16px">最稳的玩法：大家连同一个 Wi-Fi（或者一个人开热点）。不同网络之间（比如 4G 连家里宽带）有时打不通，打不通就换到同一个 Wi-Fi 再试。在微信里打开的话，先点右上角「在浏览器打开」。</p>
+     <div class="row"><button class="alt" id="back">返回</button></div></div>`,
   );
   on("#back", menu);
   on("#create", () => hostLobby(randomCode(), false));
@@ -794,7 +923,7 @@ function onlineScreen(): void {
   const code = $("#code") as HTMLInputElement;
   const join = () => {
     const v = code.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
-    if (v.length >= 4) joinLobby(v, () => showError("No room with that code (it may have closed)."));
+    if (v.length >= 4) joinLobby(v, () => showError("没有这个房间（可能已经关闭）。检查一下房间码。"));
   };
   on("#join", join);
   code.onkeydown = (e) => {
@@ -804,7 +933,7 @@ function onlineScreen(): void {
 }
 
 function quickMatch(): void {
-  lobbyStatus = "looking for a lobby…";
+  lobbyStatus = "正在找房间…";
   lobbyCode = "";
   renderLobbyShell();
   // Join the open quick-match lobby, or open one ourselves.
@@ -819,15 +948,15 @@ function hostLobby(code: string, quick: boolean, taken?: () => void): void {
   host?.close();
   host = new HostSession(code, quick);
   host.onReady = () => {
-    lobbyStatus = quick ? "quick-match lobby open · players who press Quick match land here" : "room open · send the link";
+    lobbyStatus = quick ? "快速匹配房间已开 · 其他点「快速匹配」的人会进到这里" : "房间已开好 · 把链接或房间码发给朋友";
     renderLobby();
   };
   host.onJoin = () => undefined;
   host.onMsg = hostMsg;
   host.onLeave = hostLeave;
   host.onError = (w) => showError(w);
-  host.start(taken ?? (() => showError("That room code is taken. Make a new room.")));
-  lobbyStatus = "opening the room…";
+  host.start(taken ?? (() => showError("这个房间码被占用了，重新建一个房间。")));
+  lobbyStatus = "正在开房间…";
   renderLobby();
 }
 
@@ -838,12 +967,12 @@ function joinLobby(code: string, missing: () => void, quick = false): void {
   lobbyCode = quick ? "" : code;
   client.onOpen = () => client!.send({ t: "hello", name: settings.name, weapon: settings.weapon, v: BUILD_ID });
   client.onMsg = clientMsg;
-  client.onClose = (why) => showError(`Disconnected: ${why}.`);
+  client.onClose = (why) => showError(`连接断开：${why}。`);
   client.start(() => {
     client = null;
     missing();
   });
-  lobbyStatus = "linking to the host…";
+  lobbyStatus = "正在连接房主…";
   renderLobbyShell();
 }
 
@@ -860,7 +989,7 @@ function lobbyChanged(): void {
 }
 
 function renderLobbyShell(): void {
-  show("lobby", `<div class="card"><h1>Online</h1><div class="status">${escapeHtml(lobbyStatus)}</div><div class="row"><button class="alt" id="leave">Leave</button></div></div>`);
+  show("lobby", `<div class="card"><h1>联机</h1><div class="status">${escapeHtml(lobbyStatus)}</div><div class="row"><button class="alt" id="leave">离开</button></div></div>`);
   on("#leave", leaveOnline);
 }
 
@@ -868,26 +997,29 @@ function renderLobby(): void {
   if (inMatch()) return;
   const isHost = role === "host";
   const link = lobbyCode ? shareLink(lobbyCode) : "";
+  const canShare = !!link && typeof navigator.share === "function";
   const team = (t: Team) =>
-    `<div class="team t${t}"><h3>${t === 0 ? "ALPHA" : "BRAVO"}</h3>${[0, 1, 2, 3]
+    `<div class="team t${t}"><h3>${t === 0 ? "A 队" : "B 队"}</h3>${Array.from({ length: TEAM_SIZE }, (_, i) => i)
       .map((i) => {
         const r = roster.filter((e) => e.team === t && !e.bot)[i];
-        return r ? `<div class="slot ${r.id === myId ? "me" : ""}"><span>${escapeHtml(r.name)}</span><span>${WEAPONS[r.weapon].name}</span></div>` : `<div class="slot bot"><span>bot</span><span></span></div>`;
+        return r ? `<div class="slot ${r.id === myId ? "me" : ""}"><span>${escapeHtml(r.name)}</span><span>${WEAPONS[r.weapon].name}</span></div>` : `<div class="slot bot"><span>机器人</span><span></span></div>`;
       })
       .join("")}</div>`;
+  const humans = roster.filter((r) => !r.bot).length;
   show(
     "lobby",
-    `<div class="card wide"><h1>${lobbyCode ? `Room <span class="code-big">${lobbyCode}</span>` : "Quick match"}</h1>
-      ${link ? `<p>Send this link (click to copy):</p><div class="link" id="link">${link}</div>` : ""}
+    `<div class="card wide"><h1>${lobbyCode ? `房间 <span class="code-big">${lobbyCode}</span>` : "快速匹配"}</h1>
+      ${link ? `<p>把链接发给朋友（点击复制），或者让他们在「加入」里输入房间码：</p><div class="link" id="link">${link}</div>${canShare ? `<div class="row" style="margin-top:8px"><button class="alt" id="share">分享链接…</button></div>` : ""}` : ""}
       <div class="status">${escapeHtml(lobbyStatus)}</div>
       <div class="teams" style="margin-top:12px">${team(0)}${team(1)}</div>
-      <div class="row" style="margin-top:10px"><button class="alt" id="swap">Switch team</button></div>
-      <h2>Your weapon</h2>${weaponPicker()}
+      <div class="row" style="margin-top:10px"><button class="alt" id="swap">换队</button></div>
+      <h2>武器</h2>${weaponPicker()}
       ${setupControls(isHost)}
-      <div class="row" style="margin-top:20px">${isHost ? `<button class="go" id="start">START (${roster.filter((r) => !r.bot).length} players + bots)</button>` : `<span class="small">The host starts the match.</span>`}<button class="alt" id="leave">Leave</button></div></div>`,
+      <div class="row actions">${isHost ? `<button class="go" id="start">开始（${humans} 人${humans < TEAM_SIZE * 2 ? " + 机器人" : ""}）</button>` : `<span class="small">等房主开始</span>`}<button class="alt" id="leave">离开</button></div></div>`,
   );
   on("#leave", leaveOnline);
-  on("#link", () => void navigator.clipboard?.writeText(link).then(() => ((lobbyStatus = "link copied"), renderLobby())));
+  on("#link", () => void copyText(link).then((ok) => ((lobbyStatus = ok ? "链接已复制，发给朋友吧" : "复制失败，长按链接手动复制"), renderLobby())));
+  on("#share", () => void navigator.share?.({ title: "INK RUSH 2v2", text: `来打一局涂地！房间码 ${lobbyCode}`, url: link }).catch(() => undefined));
   on("#swap", () => {
     if (isHost) {
       const r = roster.find((e) => e.id === myId)!;
@@ -906,6 +1038,29 @@ function renderLobby(): void {
   }
 }
 
+/** Clipboard API where allowed (https), else the old select-and-copy. */
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const t = document.createElement("textarea");
+    t.value = text;
+    t.style.position = "fixed";
+    t.style.opacity = "0";
+    document.body.appendChild(t);
+    t.select();
+    let ok = false;
+    try {
+      ok = document.execCommand("copy");
+    } catch {
+      ok = false;
+    }
+    t.remove();
+    return ok;
+  }
+}
+
 function leaveOnline(): void {
   host?.close();
   client?.close();
@@ -914,7 +1069,7 @@ function leaveOnline(): void {
   role = "offline";
   world = null;
   showBackdrop();
-  hud.show(false);
+  hudShow(false);
   history.replaceState(null, "", location.pathname);
   menu();
 }
@@ -924,42 +1079,51 @@ function shareLink(code: string): string {
   u.search = "";
   u.hash = "";
   u.searchParams.set("room", code);
+  // A custom broker must travel with the link, or the friend looks for the room elsewhere.
+  if (BROKER_PARAM) u.searchParams.set("broker", BROKER_PARAM);
   return u.toString();
 }
 
 function showError(msg: string): void {
   world = null;
   showBackdrop();
-  hud.show(false);
+  hudShow(false);
   document.exitPointerLock?.();
-  show("error", `<div class="card"><h1>Hmm.</h1><p>${escapeHtml(msg)}</p><div class="row"><button id="ok">Back</button></div></div>`);
+  show("error", `<div class="card"><h1>出了点问题</h1><p>${escapeHtml(msg)}</p><div class="row"><button id="ok">返回</button></div></div>`);
   on("#ok", leaveOnline);
 }
 
 function help(): void {
+  const controls = touchMode
+    ? `<b>左半屏拖动</b><span>移动（手指按哪里，摇杆就出现在哪里）</span>
+      <b>右半屏拖动</b><span>转视角 / 瞄准</span>
+      <b>开火（按住）</b><span>射击。按住开火时继续拖动，可以边打边瞄。滚筒：按住滚地，点一下甩墨；蓄力狙：按住蓄力，松开发射</span>
+      <b>潜游（点一下）</b><span>变成墨水潜进自己的颜色里：游得快、敌人看不见、墨水回得快。再点一下或者开火就会浮出来</span>
+      <b>跳</b><span>跳跃（潜游时跳得更高）</span>
+      <b>炸弹</b><span>扔墨水炸弹，要耗掉大半罐墨</span>
+      <b>大招</b><span>涂地攒满能量后按：跳起来炸开一大圈</span>`
+    : `<b>WASD</b><span>移动</span><b>鼠标</b><span>瞄准（先点一下游戏画面锁定鼠标）</span>
+      <b>左键</b><span>开火 · 滚筒：按住滚地，点一下甩墨 · 蓄力狙：按住蓄力，松开发射</span>
+      <b>Shift</b><span>潜游：在自己的墨里游得快、敌人看不见、墨水回得快</span>
+      <b>空格</b><span>跳跃</span><b>右键 / E</b><span>墨水炸弹（耗掉大半罐墨）</span>
+      <b>Q</b><span>大招：能量满时跳起来炸开一大圈</span><b>M</b><span>静音</span>`;
   show(
     "help",
-    `<div class="card"><h1>How to play</h1>
-    <p>Two teams of four. When time runs out, the team that has inked more of the stage wins. Splatting opponents sends them back to base for a few seconds.</p>
-    <div class="keys-list">
-      <b>WASD</b><span>move</span><b>Mouse</b><span>aim (click the game to capture the mouse)</span>
-      <b>Left click</b><span>fire · Roller: hold to roll, tap to fling · Longshot: hold to charge, release to fire</span>
-      <b>Shift</b><span>swim: in your own ink you're fast, hidden and refill ink quickly</span>
-      <b>Space</b><span>jump</span><b>Right click / E</b><span>ink bomb (costs most of a tank)</span>
-      <b>Q</b><span>INK BURST when the gauge is full: leap and explode</span><b>M</b><span>mute</span>
-    </div>
-    <p>The other team's ink slows you and stings. Painting fills your special gauge.</p>
-    <div class="row"><button id="back">Back</button></div></div>`,
+    `<div class="card"><h1>怎么玩</h1>
+    <p>两队各 2 人。时间到时，地面涂得多的一队获胜。把对手打倒，他会回基地等几秒才能复活。</p>
+    <div class="keys-list">${controls}</div>
+    <p>踩在敌方的墨上会变慢、掉血。涂地会攒大招能量。墨水用完了就潜进自己的颜色里补。</p>
+    <div class="row"><button id="back">返回</button></div></div>`,
   );
   on("#back", menu);
 }
 
 function enterMatch(): void {
   hideScreen();
-  hud.show(true);
+  hudShow(true);
   resultsT = 0;
   document.body.classList.add("playing");
-  canvas.requestPointerLock?.();
+  if (!touchMode) canvas.requestPointerLock?.();
 }
 
 function showResults(): void {
@@ -972,18 +1136,18 @@ function showResults(): void {
   const myTeam = m?.team ?? 0;
   const win: Team = a >= b ? 0 : 1;
   const tie = Math.abs(a - b) < 0.0005;
-  const verdict = tie ? "DRAW!" : win === myTeam ? "VICTORY!" : "DEFEAT…";
+  const verdict = tie ? "平局！" : win === myTeam ? "胜利！" : "失败…";
   const rows = [...world.players.values()]
     .sort((x, y) => x.team - y.team || y.turf - x.turf)
-    .map((p) => `<tr class="t${p.team} ${p.id === myId ? "me" : ""}"><td>${escapeHtml(p.name)}${p.bot ? " <span class='small'>bot</span>" : ""}</td><td>${WEAPONS[p.weapon].name}</td><td>${Math.round(p.turf)}p</td><td>${p.kills}</td><td>${p.deaths}</td></tr>`)
+    .map((p) => `<tr class="t${p.team} ${p.id === myId ? "me" : ""}"><td>${escapeHtml(p.name)}${p.bot ? " <span class='small'>机器人</span>" : ""}</td><td>${WEAPONS[p.weapon].name}</td><td>${Math.round(p.turf)}</td><td>${p.kills}</td><td>${p.deaths}</td></tr>`)
     .join("");
-  hud.show(false);
+  hudShow(false);
   show(
     "results",
     `<div class="card wide"><div class="verdict" style="color:${tie ? "#444" : `var(--${win === 0 ? "a" : "b"})`}">${verdict}</div>
       <div class="result-bar"><div class="a" id="ra">${(a * 100).toFixed(1)}%</div><div class="b" id="rb">${(b * 100).toFixed(1)}%</div></div>
-      <table class="stats"><tr><th>Player</th><th>Weapon</th><th>Turf</th><th>Splats</th><th>Splatted</th></tr>${rows}</table>
-      <div class="row" style="margin-top:16px"><button class="go" id="again">${role === "client" ? "Back to lobby" : role === "host" ? "Back to lobby" : "Play again"}</button><button class="alt" id="menu">Menu</button></div></div>`,
+      <table class="stats"><tr><th>玩家</th><th>武器</th><th>涂地</th><th>击倒</th><th>被击倒</th></tr>${rows}</table>
+      <div class="row actions"><button class="go" id="again">${role === "offline" ? "再来一局" : "回到房间"}</button><button class="alt" id="menu">主菜单</button></div></div>`,
   );
   const tot = a + b || 1;
   requestAnimationFrame(() => {
@@ -1000,7 +1164,7 @@ function afterResults(): void {
   world = null;
   showBackdrop();
   host?.reopen();
-  lobbyStatus = role === "host" ? "back in the lobby" : "back in the lobby · waiting for the host";
+  lobbyStatus = role === "host" ? "回到房间了" : "回到房间了 · 等房主开始";
   if (role === "host") lobbyChanged();
   renderLobby();
 }
@@ -1014,7 +1178,7 @@ const BUILD_ID = typeof __BUILD__ === "string" ? __BUILD__ : "dev";
 let backdrop: ArenaView | null = null;
 function showBackdrop(): void {
   if (!backdrop) {
-    const arena = new Arena(MAPS[0]);
+    const arena = new Arena(BACKDROP_MAP);
     const w = new World(arena, false);
     backdrop = new ArenaView(arena, w.paint, PALETTES[0]);
     for (let k = 0; k < 90; k++) w.paint.splat((((k * 7919) % 97) / 97 - 0.5) * 44, (((k * 104729) % 89) / 89 - 0.5) * 80, 1 + (k % 4), (k % 2) as Team, k + 1);
@@ -1025,6 +1189,7 @@ function showBackdrop(): void {
   backdrop.applyTo(scene);
 }
 showBackdrop();
+applyQuality();
 
 window.__ink = {
   get world() {
@@ -1038,6 +1203,11 @@ window.__ink = {
   },
   keys,
   mouse,
+  touch,
+  touchMode,
+  get cam() {
+    return [camYaw, camPitch];
+  },
   setCam: (y: number, p: number) => {
     camYaw = y;
     camPitch = p;
@@ -1054,6 +1224,6 @@ const q = new URLSearchParams(location.search);
 if (q.get("room")) {
   menu();
   const code = q.get("room")!.toUpperCase();
-  joinLobby(code, () => showError("No room with that code (it may have closed, or the host is on another version of the game)."));
+  joinLobby(code, () => showError("没有这个房间（可能已经关闭，或者房主的游戏版本和你的不一样，双方都刷新一下）。"));
 } else title();
 requestAnimationFrame(frame);

@@ -10,10 +10,11 @@ export const PALETTES: [number, number][] = [
   [0xffd21a, 0x7b3dff],
   [0xff3d7f, 0x13d4c0],
 ];
-export const PALETTE_NAMES = ["Tangerine / Cobalt", "Lime / Magenta", "Lemon / Violet", "Rose / Teal"];
+export const PALETTE_NAMES = ["橙 / 蓝", "青柠 / 品红", "柠檬黄 / 紫", "玫红 / 青"];
 
-export const TEAM_SIZE = 4;
-export const MAX_PLAYERS = 8;
+/** 2 v 2: two a side, four in a room; bots fill any empty seat. */
+export const TEAM_SIZE = 2;
+export const MAX_PLAYERS = TEAM_SIZE * 2;
 
 export const MOVE = {
   walk: 5.6,
@@ -65,9 +66,9 @@ export interface WeaponDef {
 export const WEAPONS: Record<WeaponId, WeaponDef> = {
   blaster: {
     id: "blaster",
-    name: "Splatter",
+    name: "速射枪",
     kind: "auto",
-    blurb: "Rapid blobs, mid range. The all-rounder.",
+    blurb: "连发墨弹，中距离，最好上手。",
     rate: 0.1,
     ink: 1.0,
     damage: 34,
@@ -80,9 +81,9 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   },
   roller: {
     id: "roller",
-    name: "Slab Roller",
+    name: "滚筒",
     kind: "roller",
-    blurb: "Hold to roll a wide stripe and flatten anyone in front. Tap to fling.",
+    blurb: "按住滚出一大条，碾过敌人；点一下甩墨。",
     rate: 0.55,
     ink: 7,
     damage: 125,
@@ -95,9 +96,9 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   },
   longshot: {
     id: "longshot",
-    name: "Longshot",
+    name: "蓄力狙",
     kind: "charge",
-    blurb: "Hold to charge a long line of ink. Full charge splats in one hit.",
+    blurb: "按住蓄力打出一长条，蓄满一枪击倒。",
     rate: 0.95,
     ink: 18,
     damage: 100,

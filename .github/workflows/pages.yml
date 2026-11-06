@@ -25,7 +25,13 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
         env:
-          GITHUB_PAGES: "1"
+          # Optional: your own matchmaking broker / TURN server (Settings → Secrets and variables →
+          # Actions → Variables). Left unset, the game uses PeerJS's free broker and public STUN.
+          VITE_PEER_HOST: ${{ vars.PEER_HOST }}
+          VITE_PEER_PORT: ${{ vars.PEER_PORT }}
+          VITE_PEER_PATH: ${{ vars.PEER_PATH }}
+          VITE_PEER_KEY: ${{ vars.PEER_KEY }}
+          VITE_ICE_SERVERS: ${{ vars.ICE_SERVERS }}
       - uses: actions/upload-pages-artifact@v5
         with:
           path: dist

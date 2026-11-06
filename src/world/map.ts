@@ -47,8 +47,8 @@ const ramp = (x0: number, x1: number, z0: number, z1: number, lo: number, h: num
 
 /** Harbor Plaza: bases on raised decks at each end, a tower in the middle, three lanes. */
 const PLAZA: MapDef = {
-  name: "Harbor Plaza",
-  blurb: "Raised decks at both ends, a tower in the middle, three lanes between.",
+  name: "港口广场",
+  blurb: "大地图（原版 4v4 尺寸）：两端高台，中间一座塔，三条路。",
   halfX: 24,
   halfZ: 42,
   res: 4,
@@ -100,8 +100,8 @@ const PLAZA: MapDef = {
 
 /** Canal Yard: tighter, with a sunken canal across the middle and crates everywhere. */
 const YARD: MapDef = {
-  name: "Canal Yard",
-  blurb: "Stacked crates, a sunken canal across the middle, flank catwalks.",
+  name: "运河货场",
+  blurb: "中等地图：到处是货箱，中间一条下沉的运河，两侧有走道。",
   halfX: 20,
   halfZ: 36,
   res: 4,
@@ -142,7 +142,55 @@ const YARD: MapDef = {
   ],
 };
 
-export const MAPS: MapDef[] = [PLAZA, YARD];
+/**
+ * Rooftop Court: a compact stage sized for 2 v 2 (about 45% of Harbor Plaza's floor), so four
+ * players meet often. Low base decks, two cover crates per side, a raised flank walkway, and a
+ * low hill in the middle with ramps east and west.
+ */
+const COURT: MapDef = {
+  name: "天台球场",
+  blurb: "2v2 专用小地图：两端低台、中间小土坡、一侧高走道，碰面快。",
+  halfX: 16,
+  halfZ: 28,
+  res: 4,
+  time: "day",
+  solids: [
+    ...sym([
+      // Team 0's deck (z < 0) and its ramps.
+      box(-6, 6, -28, -23, 1.4, "base"),
+      ramp(-2.5, 2.5, -23, -19, 0, 1.4, "z", -1),
+      ramp(6, 9.5, -27, -24, 0, 1.4, "x", -1),
+      // Cover in front of the deck.
+      box(-9.5, -6.5, -18, -15, 2.2, "crate"),
+      box(6, 9, -15, -12, 2.2, "crate"),
+      box(-2, 2, -13.5, -12.4, 1.0, "wall"),
+      // West flank: a raised walkway with a ramp up from the deck side.
+      box(-16, -11.5, -11, -3, 1.6),
+      ramp(-16, -11.5, -14.5, -11, 0, 1.6, "z", 1),
+      // Mid approach.
+      box(4, 7, -7, -4, 2.2, "crate"),
+    ]),
+    // The hill in the middle: one block, ramps east and west (they mirror onto each other).
+    box(-3, 3, -2.5, 2.5, 1.2),
+    ramp(3, 6.5, -2, 2, 0, 1.2, "x", -1),
+    ramp(-6.5, -3, -2, 2, 0, 1.2, "x", 1),
+  ],
+  spawns: [
+    [
+      [-2, -25.5],
+      [2, -25.5],
+    ],
+    [
+      [2, 25.5],
+      [-2, 25.5],
+    ],
+  ],
+};
+
+/** COURT first: it's the default for 2 v 2. The two bigger stages stay for a roomier game. */
+export const MAPS: MapDef[] = [COURT, PLAZA, YARD];
+/** The menus' backdrop stage. */
+export const BACKDROP_MAP = PLAZA;
 
 export function solidTop(s: Solid, x: number, z: number): number {
   if (!s.ramp) return s.h;

@@ -11,7 +11,8 @@ function buildId(): string {
 }
 
 export default defineConfig({
-  base: process.env.GITHUB_PAGES ? "/ink-rush/" : "./",
+  // Relative paths: the build runs from any folder (GitHub Pages' /<repo>/, a LAN server, a file share).
+  base: "./",
   define: { __BUILD__: JSON.stringify(process.env.INK_BUILD ?? buildId()) },
   server: { port: 5421, strictPort: true },
   build: { target: "es2022", chunkSizeWarningLimit: 1500 },

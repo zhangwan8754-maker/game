@@ -5,7 +5,7 @@ const H = await launch({ url: BASE, width: 960, height: 540 });
 await H.page.keyboard.press("Enter");
 await H.page.click("#online");
 await H.page.click("#create");
-await H.page.waitForFunction(() => document.querySelector(".status")?.textContent.includes("room open"), null, { timeout: 30000 });
+await H.page.waitForFunction(() => document.querySelector(".status")?.textContent.includes("房间已开好"), null, { timeout: 30000 });
 const link = await H.page.evaluate(() => document.querySelector("#link").textContent);
 const G = await launch({ url: link, width: 960, height: 540 });
 await H.page.waitForFunction(() => document.querySelectorAll(".slot:not(.bot)").length >= 2, null, { timeout: 40000 });
