@@ -251,8 +251,10 @@ function buildWorld(s: MatchSetup, entries: RosterEntry[], authority: boolean): 
   countdownShown = -1;
 }
 
-/** Host / offline: fill the empty slots with bots, 4 a side. */
+/** Host / offline: fill the empty slots with bots, two a side. */
+let botRound = 0;
 function fillBots(humans: RosterEntry[]): RosterEntry[] {
+  botRound++;
   const out = humans.map((h) => ({ ...h }));
   let nextId = 100;
   const names = ["Pip", "Squish", "Dot", "Nib", "Glop", "Wisp", "Fizz", "Ripple", "Mop", "Blip", "Goo", "Swash"];
@@ -261,7 +263,9 @@ function fillBots(humans: RosterEntry[]): RosterEntry[] {
     const have = out.filter((e) => e.team === t);
     have.forEach((e, i) => (e.slot = i));
     for (let k = have.length; k < TEAM_SIZE; k++) {
-      out.push({ id: nextId++, name: names[(n++ * 5 + setup.map * 3 + t) % names.length], team: t, weapon: WEAPON_ORDER[(k + t) % 3], bot: true, slot: k });
+      // A different weapon each match and each seat: bots show off the whole armoury.
+      const wpn = WEAPON_ORDER[(k * 3 + t * 5 + n + botRound * 2) % WEAPON_ORDER.length];
+      out.push({ id: nextId++, name: names[(n++ * 5 + setup.map * 3 + t) % names.length], team: t, weapon: wpn, bot: true, slot: k });
     }
   }
   return out;
@@ -664,6 +668,8 @@ function fixedStep(dt: number): void {
     }
     w.step(dt);
     hostSnapshot(dt);
+    // Offline nobody collects the outgoing events: drop them (they were applied already).
+    if (!host) w.out.length = 0;
   } else {
     if (m) {
       w.move(m, dt);
@@ -868,7 +874,7 @@ function menu(): void {
   on("#help", help);
 }
 
-const SKILL_NAME: Record<BotSkill, string> = { chill: "休闲", fresh: "普通", fierce: "凶猛" };
+const SKILL_NAME: Record<BotSkill, string> = { chill: "休闲", fresh: "普通", fierce: "凶猛", legend: "地狱" };
 
 function setupControls(editable: boolean): string {
   const opt = (id: string, items: [string, string][], cur: string) =>

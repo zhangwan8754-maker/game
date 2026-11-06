@@ -5,7 +5,7 @@
  * their own ink they're only a ripple (and invisible to the other team unless close).
  */
 import * as THREE from "three";
-import type { Team } from "../config";
+import { type Team, WEAPONS } from "../config";
 import type { GameEvent, Player, World } from "../game/world";
 
 const _m = new THREE.Matrix4();
@@ -46,6 +46,8 @@ class Blot {
   private readonly crest: THREE.Mesh;
   private readonly feet: THREE.Mesh[] = [];
   private readonly weapon = new THREE.Group();
+  /** A gatling's barrels: they spin while it fires. */
+  private spin: THREE.Object3D | null = null;
   private readonly tag: THREE.Sprite | null;
   private readonly inkMat: THREE.MeshStandardMaterial;
   private walk = 0;
@@ -142,6 +144,50 @@ class Blot {
       h.rotation.x = -0.9;
       h.position.set(0, 0.35, -0.3);
       g.add(r, h);
+    } else if (this.p.weapon === "brush") {
+      // A short handle and a block of inky bristles, held low in front.
+      g.position.set(0.2, 0.3, 0.7);
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.14, 0.22), this.inkMat);
+      const back = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.08, 0.26), dark);
+      back.position.y = 0.1;
+      const h = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.7, 8), metal);
+      h.rotation.x = -0.9;
+      h.position.set(0, 0.36, -0.22);
+      g.add(head, back, h);
+    } else if (this.p.weapon === "scatter") {
+      // A stubby body and two wide barrels side by side.
+      const b = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.2, 0.42), dark);
+      for (const sx of [-0.06, 0.06]) {
+        const n = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.075, 0.3, 10).rotateX(Math.PI / 2), metal);
+        n.position.set(sx, 0.02, 0.34);
+        g.add(n);
+      }
+      const t = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), this.inkMat);
+      t.position.set(0, 0.17, -0.06);
+      g.add(b, t);
+    } else if (this.p.weapon === "gatling") {
+      // A drum and a ring of six barrels that spin while firing.
+      const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.32, 14).rotateX(Math.PI / 2), this.inkMat);
+      drum.position.z = -0.05;
+      const spin = new THREE.Group();
+      spin.position.z = 0.42;
+      for (let k = 0; k < 6; k++) {
+        const a = (k / 6) * Math.PI * 2;
+        const n = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.6, 6).rotateX(Math.PI / 2), metal);
+        n.position.set(Math.cos(a) * 0.08, Math.sin(a) * 0.08, 0);
+        spin.add(n);
+      }
+      g.add(drum, spin);
+      this.spin = spin;
+    } else if (this.p.weapon === "cannon") {
+      // A fat tube with a ball of ink in its mouth.
+      const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.12, 0.75, 14).rotateX(Math.PI / 2), dark);
+      tube.position.z = 0.2;
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.035, 8, 16), metal);
+      ring.position.z = 0.56;
+      const ball = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 10), this.inkMat);
+      ball.position.z = 0.52;
+      g.add(tube, ring, ball);
     } else {
       const b = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.06, 1.25, 10).rotateX(Math.PI / 2), dark);
       b.position.z = 0.35;
@@ -186,8 +232,9 @@ class Blot {
     this.feet[1].position.z = 0.05 - Math.sin(this.walk) * 0.12 * Math.min(1, speed / 3);
     this.tankInk.scale.y = Math.max(0.02, p.ink / 100);
     this.crest.scale.y = 0.7 + Math.sin(t * 3 + p.id) * 0.03;
-    this.weapon.rotation.x = -p.pitch * (p.weapon === "roller" ? 0 : 1);
+    this.weapon.rotation.x = -p.pitch * (p.w.kind === "roller" ? 0 : 1);
     if (p.weapon === "roller") this.weapon.children[0].rotation.x += dt * speed * 3;
+    if (this.spin) this.spin.rotation.z += dt * (p.firing ? 30 : 2);
     this.blob.scale.set(1 + Math.sin(t * 12) * 0.05, 0.42, 1.25 + Math.min(0.4, speed * 0.04));
   }
 
@@ -315,7 +362,8 @@ export class Actors {
       if (i >= MAX_SHOTS) continue;
       const sp = s.vel.length();
       _q.setFromUnitVectors(UP, _p.copy(s.vel).divideScalar(sp || 1));
-      _s.set(1, 1 + Math.min(1.6, sp * 0.04), 1);
+      const size = WEAPONS[s.weapon].shotSize ?? 1;
+      _s.set(size, size * (1 + Math.min(1.6, sp * 0.04)), size);
       _m.compose(s.pos, _q, _s);
       m.setMatrixAt(i, _m);
     }

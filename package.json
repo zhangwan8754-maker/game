@@ -11,7 +11,8 @@
     "preview": "vite preview --port 5420 --strictPort",
     "typecheck": "tsc --noEmit",
     "test:phone": "node tools/phone.mjs",
-    "test:online": "node tools/phone-online.mjs"
+    "test:online": "node tools/phone-online.mjs",
+    "test:content": "node tools/content.mjs"
   },
   "dependencies": {
     "peerjs": "1.5.5",

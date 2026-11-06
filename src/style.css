@@ -979,3 +979,27 @@ body.short .card .actions {
 #hud .ink span {
   display: none;
 }
+/* Weapon icons on the HUD's heads (the newer weapons). */
+#hud .head i.w-scatter {
+  width: 18px;
+  height: 12px;
+  border-radius: 3px 8px 8px 3px;
+}
+#hud .head i.w-gatling {
+  width: 20px;
+  height: 6px;
+  border-radius: 2px;
+  box-shadow:
+    0 -5px 0 -1px #fff,
+    0 5px 0 -1px #fff;
+}
+#hud .head i.w-cannon {
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+}
+#hud .head i.w-brush {
+  width: 18px;
+  height: 8px;
+  border-radius: 2px 2px 7px 7px;
+}

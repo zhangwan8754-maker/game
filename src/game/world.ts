@@ -62,6 +62,8 @@ export class Player {
   remote = false;
   lastRollX = 0;
   lastRollZ = 0;
+  /** Seconds until a roller's next contact hit counts (weapons with rollHitCD). */
+  rollHitT = 0;
   /** Interpolation (clients, remote players). */
   readonly from = new THREE.Vector3();
   readonly to = new THREE.Vector3();
@@ -335,17 +337,28 @@ export class World {
     const muzzle = _w.set(p.pos.x + aim.x * 0.5, p.pos.y + 1.15, p.pos.z + aim.z * 0.5);
     if (c.fire) p.heldFor += dt;
     if (w.kind === "auto") {
-      if (c.fire && p.fireCD <= 0 && p.ink >= w.ink) {
+      // A gatling spins up first: hold the trigger `windup` seconds (the crosshair ring shows it).
+      const spinning = !!w.windup && c.fire && p.heldFor < w.windup;
+      if (spinning) {
+        p.firing = p.ink >= w.ink;
+        p.charge = p.heldFor / w.windup!;
+      } else if (c.fire && p.fireCD <= 0 && p.ink >= w.ink) {
         p.firing = true;
-        p.fireCD = w.rate;
+        p.charge = 0;
+        // Carry the part of a step we overshot, so the rate holds on the 60 Hz step
+        // (a 0.05 s gatling would otherwise round to every 4th step: 15 shots/s, not 20).
+        p.fireCD = w.rate + Math.max(-dt, p.fireCD);
         this.spend(p, w.ink);
-        const s = this.nextSeed();
-        const R = splitRng(s);
-        const d = aimDir(p.yaw + (R() - 0.5) * 2 * w.spread, p.pitch + (R() - 0.5) * w.spread + 0.035, new THREE.Vector3()).multiplyScalar(w.speed);
-        const e: GameEvent = { k: "shot", id: p.id, w: p.weapon, o: muzzle.toArray(), v: d.toArray(), s };
-        this.spawnShot(p, p.weapon, muzzle, d, s, !this.authority);
-        send(e);
+        for (let k = 0; k < (w.pellets ?? 1); k++) {
+          const s = this.nextSeed();
+          const R = splitRng(s);
+          const d = aimDir(p.yaw + (R() - 0.5) * 2 * w.spread, p.pitch + (R() - 0.5) * w.spread + 0.035, new THREE.Vector3()).multiplyScalar(w.speed * (w.pellets ? 0.9 + R() * 0.2 : 1));
+          const e: GameEvent = { k: "shot", id: p.id, w: p.weapon, o: muzzle.toArray(), v: d.toArray(), s };
+          this.spawnShot(p, p.weapon, muzzle, d, s, !this.authority);
+          send(e);
+        }
       } else if (c.fire) p.firing = p.ink >= w.ink;
+      if (!c.fire) p.charge = 0;
     } else if (w.kind === "roller") {
       const speed = Math.hypot(p.vel.x, p.vel.z);
       if (c.fire && p.heldFor > 0.22 && p.onGround && p.ink > 0) {
@@ -360,7 +373,8 @@ export class World {
       if (!c.fire && p.heldFor > 0 && p.heldFor <= 0.22 && p.fireCD <= 0 && p.ink >= w.ink) {
         p.fireCD = w.rate;
         this.spend(p, w.ink);
-        for (let k = -3; k <= 3; k++) {
+        const half = ((w.flingCount ?? 7) - 1) / 2;
+        for (let k = -half; k <= half; k++) {
           const s = this.nextSeed();
           const d = aimDir(p.yaw + k * 0.09, p.pitch + 0.16, new THREE.Vector3()).multiplyScalar(w.speed * (0.8 + Math.abs(k) * 0.02));
           const e: GameEvent = { k: "shot", id: p.id, w: p.weapon, o: muzzle.toArray(), v: d.toArray(), s };
@@ -432,7 +446,7 @@ export class World {
       vel: v.clone(),
       travelled: 0,
       range: w.kind === "roller" ? w.range * 0.8 : w.range,
-      damage: w.kind === "roller" ? 38 : w.damage,
+      damage: w.kind === "roller" ? (w.flingDamage ?? 38) : w.damage,
       splat: w.splat,
       seed,
       ghost,
@@ -520,17 +534,25 @@ export class World {
       const ny = s.pos.y + s.vel.y * dt;
       const nz = s.pos.z + s.vel.z * dt;
       if (!s.ghost) {
+        const blast = WEAPONS[s.weapon].blast;
         for (const q of this.players.values()) {
           if (q.team === s.team || q.dead) continue;
           const d = segDist(s.pos, _w.set(nx, ny, nz), _v.set(q.pos.x, q.pos.y + (q.submerged ? 0.2 : 0.8), q.pos.z));
           if (d < (q.submerged ? 0.45 : 0.62)) {
             this.hurt(q, s.damage, s.owner);
-            this.emit({ k: "splat", x: nx, z: nz, r: s.splat * 0.6, t: s.team, s: s.seed, by: s.owner });
+            if (blast) this.explode(nx, ny, nz, blast.radius, s.team, s.owner, blast.near, blast.far);
+            else this.emit({ k: "splat", x: nx, z: nz, r: s.splat * 0.6, t: s.team, s: s.seed, by: s.owner });
             s.dead = true;
             break;
           }
         }
         if (s.dead) continue;
+        // A blast shot that runs out of range bursts in the air.
+        if (blast && s.travelled > s.range) {
+          this.explode(nx, ny, nz, blast.radius, s.team, s.owner, blast.near, blast.far);
+          s.dead = true;
+          continue;
+        }
       }
       const h = this.arena.height(nx, nz);
       if (ny <= h) {
@@ -539,13 +561,15 @@ export class World {
         if (!s.ghost) {
           const x = wall ? s.pos.x : nx;
           const z = wall ? s.pos.z : nz;
-          this.emit({ k: "splat", x, z, r: wall ? s.splat * 0.55 : s.splat, t: s.team, s: s.seed, by: s.owner });
+          const blast = WEAPONS[s.weapon].blast;
+          if (blast) this.explode(x, Math.max(ny, this.arena.height(x, z)) + 0.2, z, blast.radius, s.team, s.owner, blast.near, blast.far);
+          else this.emit({ k: "splat", x, z, r: wall ? s.splat * 0.55 : s.splat, t: s.team, s: s.seed, by: s.owner });
         }
         s.dead = true;
         continue;
       }
       // A trail of droplets on the way (blasters paint a thin path).
-      if (!s.ghost && s.weapon === "blaster" && Math.floor(s.travelled / 3.2) !== Math.floor((s.travelled - step) / 3.2)) {
+      if (!s.ghost && WEAPONS[s.weapon].trail && Math.floor(s.travelled / 3.2) !== Math.floor((s.travelled - step) / 3.2)) {
         const gy = this.arena.height(nx, nz);
         if (ny - gy < 3) this.emit({ k: "splat", x: nx, z: nz, r: 0.35, t: s.team, s: s.seed + 7, by: s.owner });
       }
@@ -605,20 +629,25 @@ export class World {
         p.hp = Math.max(MOVE.enemyInkHpFloor, p.hp - MOVE.enemyInkDps * dt);
         p.hpDelay = Math.max(p.hpDelay, 0.3);
       }
-      // Rollers paint (and flatten) what they roll over.
+      // Rollers (and brushes) paint, and flatten, what they roll over.
+      p.rollHitT -= dt;
       if (p.rolling && p.onGround) {
+        const width = p.w.rollWidth ?? 2.0;
         const fx = Math.sin(p.yaw);
         const fz = Math.cos(p.yaw);
         const x = p.pos.x + fx * 0.9;
         const z = p.pos.z + fz * 0.9;
         if (Math.hypot(x - p.lastRollX, z - p.lastRollZ) > 0.5) {
-          this.emit({ k: "stripe", ax: p.lastRollX || x, az: p.lastRollZ || z, bx: x, bz: z, w: 2.0, t: p.team, s: this.nextSeed(), by: p.id });
+          this.emit({ k: "stripe", ax: p.lastRollX || x, az: p.lastRollZ || z, bx: x, bz: z, w: width, t: p.team, s: this.nextSeed(), by: p.id });
           p.lastRollX = x;
           p.lastRollZ = z;
         }
         for (const q of this.players.values()) {
-          if (q.team === p.team || q.dead) continue;
-          if (Math.hypot(q.pos.x - x, q.pos.z - z) < 1.25 && Math.abs(q.pos.y - p.pos.y) < 1.2) this.hurt(q, p.w.damage, p.id);
+          if (q.team === p.team || q.dead || p.rollHitT > 0) continue;
+          if (Math.hypot(q.pos.x - x, q.pos.z - z) < 0.25 + width * 0.5 && Math.abs(q.pos.y - p.pos.y) < 1.2) {
+            this.hurt(q, p.w.damage, p.id);
+            p.rollHitT = p.w.rollHitCD ?? 0;
+          }
         }
       } else {
         p.lastRollX = p.pos.x;

@@ -1,9 +1,11 @@
 /** Synthesized sound (no files): squelchy shots, splats, booms, the whistle. */
+import type { WeaponId } from "./config";
 
 export class Sfx {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private noise: AudioBuffer | null = null;
+  private readonly lastShot = new Map<WeaponId, number>();
   muted = false;
 
   /** Needs a user gesture; call from a click / key handler. */
@@ -63,15 +65,38 @@ export class Sfx {
   }
 
   /** `near` 0..1 attenuates by distance. */
-  shot(kind: "blaster" | "roller" | "longshot", near = 1): void {
+  shot(kind: WeaponId, near = 1): void {
     if (near < 0.05) return;
-    if (kind === "blaster") {
-      this.tone(720 + Math.random() * 120, 240, 0.09, 0.12 * near, "triangle");
-      this.hiss(0.06, 0.08 * near, 2400, 2);
-    } else if (kind === "roller") this.hiss(0.18, 0.18 * near, 900, 0.8);
-    else {
-      this.tone(1600, 300, 0.22, 0.14 * near, "sawtooth");
-      this.hiss(0.2, 0.12 * near, 3200, 1.5);
+    // A shotgun's pellets (and a fan's blobs) arrive together: one sound for the lot.
+    const now = performance.now();
+    if (now - (this.lastShot.get(kind) ?? -1e9) < 35) return;
+    this.lastShot.set(kind, now);
+    switch (kind) {
+      case "blaster":
+        this.tone(720 + Math.random() * 120, 240, 0.09, 0.12 * near, "triangle");
+        this.hiss(0.06, 0.08 * near, 2400, 2);
+        break;
+      case "scatter":
+        this.tone(260, 90, 0.12, 0.16 * near, "square");
+        this.hiss(0.12, 0.16 * near, 1500, 0.9);
+        break;
+      case "gatling":
+        this.tone(980 + Math.random() * 80, 520, 0.04, 0.07 * near, "triangle");
+        this.hiss(0.03, 0.05 * near, 3000, 2);
+        break;
+      case "cannon":
+        this.tone(140, 50, 0.25, 0.22 * near, "sine");
+        this.hiss(0.2, 0.14 * near, 700, 0.7);
+        break;
+      case "roller":
+        this.hiss(0.18, 0.18 * near, 900, 0.8);
+        break;
+      case "brush":
+        this.hiss(0.1, 0.12 * near, 1400, 1);
+        break;
+      default:
+        this.tone(1600, 300, 0.22, 0.14 * near, "sawtooth");
+        this.hiss(0.2, 0.12 * near, 3200, 1.5);
     }
   }
 
